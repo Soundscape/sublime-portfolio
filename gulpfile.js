@@ -24,7 +24,8 @@
       fonts: {
         src: ['./bower_components/materialize/font/*.*', './bower_components/materialize/font/**/*.*'],
         out: './www/font/'
-      }
+      },
+      favicons: ['./favicons/*.*']
     };
 
   // Utility tasks
@@ -34,7 +35,7 @@
     paths.clean.forEach(fn);
   });
 
-  gulp.task('build', ['clean', 'coffee', 'browserify', 'jade', 'sass', 'fonts', 'assets']);
+  gulp.task('build', ['clean', 'coffee', 'browserify', 'jade', 'sass', 'fonts', 'assets', 'favicons']);
 
   gulp.task('watch', ['build'], function () {
     gulp.watch(paths.coffee, ['build']);
@@ -86,6 +87,11 @@
   gulp.task('assets', function() {
     return gulp.src(paths.assets.src)
       .pipe(gulp.dest(paths.assets.out));
+  });
+
+  gulp.task('favicons', function() {
+    return gulp.src(paths.favicons)
+      .pipe(gulp.dest(paths.www));
   });
 
   gulp.task('jade', function () {
