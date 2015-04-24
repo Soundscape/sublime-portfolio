@@ -17,6 +17,10 @@
       js: ['./www/*.js', './www/**/*.js'],
       bundle: ['./www/app.js'],
       default: 'app.html',
+      assets: {
+        src: ['./assets/*.*', './assets/**/*.*'],
+        out: './www/assets/'
+      },
       fonts: {
         src: ['./bower_components/materialize/font/*.*', './bower_components/materialize/font/**/*.*'],
         out: './www/font/'
@@ -30,7 +34,7 @@
     paths.clean.forEach(fn);
   });
 
-  gulp.task('build', ['clean', 'coffee', 'browserify', 'jade', 'sass']);
+  gulp.task('build', ['clean', 'coffee', 'browserify', 'jade', 'sass', 'fonts', 'assets']);
 
   gulp.task('watch', ['build'], function () {
     gulp.watch(paths.coffee, ['build']);
@@ -67,7 +71,7 @@
       .on('error', plugins.util.log.bind(plugins.util, 'CoffeeScript Error'));
   });
 
-  gulp.task('sass', ['fonts'], function () {
+  gulp.task('sass', function () {
     return plugins.rubySass(paths.sass, { sourcemap: true, compass: true })
     .on('error', plugins.util.log.bind(plugins.util, 'SASS Error'))
     .pipe(plugins.sourcemaps.write())
@@ -77,6 +81,11 @@
   gulp.task('fonts', function() {
     return gulp.src(paths.fonts.src)
       .pipe(gulp.dest(paths.fonts.out));
+  });
+
+  gulp.task('assets', function() {
+    return gulp.src(paths.assets.src)
+      .pipe(gulp.dest(paths.assets.out));
   });
 
   gulp.task('jade', function () {

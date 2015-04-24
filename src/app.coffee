@@ -1,4 +1,6 @@
 $ = require 'jquery'
 require 'materialize'
 
-console.log 'App ready'
+$ () ->
+  $('.button-collapse').sideNav()
+  $('.parallax').parallax()
