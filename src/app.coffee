@@ -1,1 +1,4 @@
-console.log 'Application ready'
+$ = require 'jquery'
+require 'materialize'
+
+console.log 'App ready'

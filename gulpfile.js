@@ -5,16 +5,22 @@
     plugins = require('gulp-load-plugins')(),
     rimraf = require('rimraf'),
     path = require('path'),
+    browserify = require('browserify'),
+    source = require('vinyl-source-stream'),
     paths = {
       www: './www/',
       clean: ['./www/', './coverage'],
       coffee: ['./src/*.coffee', './src/**/*.coffee'],
-      sass: ['./src/*.scss', './src/**/*.scss'],
+      sass: './src/app.scss',
       jade: ['./src/*.jade', './src/**/*.jade'],
       test: ['./www/test/*.spec.js'],
       js: ['./www/*.js', './www/**/*.js'],
       bundle: ['./www/app.js'],
-      default: 'app.html'
+      default: 'app.html',
+      fonts: {
+        src: ['./bower_components/materialize/font/*.*', './bower_components/materialize/font/**/*.*'],
+        out: './www/font/'
+      }
     };
 
   // Utility tasks
@@ -24,12 +30,12 @@
     paths.clean.forEach(fn);
   });
 
-  gulp.task('build', ['clean', 'coffee', 'jade', 'sass']);
+  gulp.task('build', ['clean', 'coffee', 'browserify', 'jade', 'sass']);
 
   gulp.task('watch', ['build'], function () {
-    gulp.watch(paths.coffee, ['coffee']);
-    gulp.watch(paths.jade, ['jade']);
-    gulp.watch(paths.sass, ['sass']);
+    gulp.watch(paths.coffee, ['build']);
+    gulp.watch(paths.jade, ['build']);
+    gulp.watch(paths.sass, ['build']);
   });
 
   gulp.task('serve', ['build'], function () {
@@ -46,26 +52,31 @@
   gulp.task('default', ['watch', 'serve']);
 
   // Conversion tasks
+  gulp.task('browserify', function () {
+    return browserify(paths.bundle)
+      .bundle()
+      .pipe(source('bundle.js'))
+      .pipe(gulp.dest(paths.www));
+  });
+
   gulp.task('coffee', function () {
     return gulp.src(paths.coffee)
       .pipe(plugins.coffee())
       .pipe(plugins.uglify())
       .pipe(gulp.dest(paths.www))
-      .on('error', plugins.util.log.bind(plugins.util, 'CoffeeScript Error'))
-      .on('finish', function () {
-        gulp.src(paths.bundle)
-          .pipe(plugins.browserify({ insertGlobals: true, debug: gulp.env.production }))
-          .pipe(plugins.uglify())
-          .pipe(gulp.dest(paths.www));
-      });
+      .on('error', plugins.util.log.bind(plugins.util, 'CoffeeScript Error'));
   });
 
-  gulp.task('sass', function () {
-    return gulp.src(paths.sass)
-      .pipe(plugins.sass())
-      .pipe(plugins.minifyCss({ keepBreaks: false }))
-      .pipe(gulp.dest(paths.www))
-      .on('error', plugins.util.log.bind(plugins.util, 'SASS Error'));
+  gulp.task('sass', ['fonts'], function () {
+    return plugins.rubySass(paths.sass, { sourcemap: true, compass: true })
+    .on('error', plugins.util.log.bind(plugins.util, 'SASS Error'))
+    .pipe(plugins.sourcemaps.write())
+    .pipe(gulp.dest(paths.www));
+  });
+
+  gulp.task('fonts', function() {
+    return gulp.src(paths.fonts.src)
+      .pipe(gulp.dest(paths.fonts.out));
   });
 
   gulp.task('jade', function () {
