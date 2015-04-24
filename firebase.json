@@ -1,0 +1,9 @@
+{
+  "firebase": "blaze-tk",
+  "public": "./www",
+  "ignore": [
+    "firebase.json",
+    "**/.*",
+    "**/node_modules/**"
+  ]
+}

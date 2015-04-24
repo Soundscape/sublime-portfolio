@@ -16,7 +16,7 @@
       test: ['./www/test/*.spec.js'],
       js: ['./www/*.js', './www/**/*.js'],
       bundle: ['./www/app.js'],
-      default: 'app.html',
+      default: 'index.html',
       assets: {
         src: ['./assets/*.*', './assets/**/*.*'],
         out: './www/assets/'
