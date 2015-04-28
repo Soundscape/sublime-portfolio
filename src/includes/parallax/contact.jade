@@ -2,26 +2,42 @@
   .section.no-pad-bot
     .container
       .row.center
-        h5.header.col.s12.light Section caption
+        h3.header.col.s12.lime-text.text-lighten-1
+          i.mdi-content-send
+
+        h5.header.col.s12.light Contact me
 
   .parallax
     img(src='assets/images/background3.jpg', alt='Unsplashed background img 3')
 
 .container
-  .section
+  #contact.scrollspy.section
+
     .row
-      .col.l8.s12.center
-        h3
-          i.mdi-content-send
+      form.col.s12.m9.l9
+        .row
+          .input-field.col.s6
+            input#first_name.validate(type="text")
+            label(for="first_name") First Name
 
-        h4 Contact me
+          .input-field.col.s6
+            input#last_name.validate(type="text")
+            label(for="last_name") Last Name
 
-        p.left-align.light Lorem ipsum dolor sit amet, consectetur adipiscing elit.
+        .row
+          .input-field.col.s12
+            input#email.validate(type="email")
+            label(for="email") E-mail
 
-      .col.l4.s12.center
-        h3
-          i.mdi-content-send
+        textarea.materialize-textarea(placeholder="Your Message" required="")
+        button.btn.waves-effect.waves-light.right(type="submit" name="action")
+          | Submit
+          i.mdi-content-send.right
 
-        h4 Latest blogs
-
-        p.left-align.light Lorem ipsum dolor sit amet, consectetur adipiscing elit.
+      .col.s12.m3.l3
+        h6.mdi-action-home Address
+        p Nr. 6, 21 Awesome Street, London, UK
+        h6.mdi-hardware-phone-android Phone Number
+        p +91 9912776151
+        h6.mdi-action-open-in-browser Website
+        p qnimate.com

@@ -9,16 +9,14 @@ html(lang="en")
 
     link(rel="stylesheet" href="app.css")
 
-  body
+  body.no-select
 
     include includes/nav.jade
 
     include includes/parallax/intro.jade
-
     include includes/parallax/projects.jade
-
     include includes/parallax/contact.jade
 
     include includes/footer.jade
 
-    script(src="bundle.js")
+    include includes/scripts.jade

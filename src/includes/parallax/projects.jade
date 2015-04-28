@@ -1,19 +1,41 @@
-.parallax-container.valign-wrapper.hide-on-med-and-down
+- var items = []
+- items.push({ title: 'Project 1', description: 'Lorem ipsum dolor sit amet.', img: 'assets/images/background15.png', url: '#!' })
+- items.push({ title: 'Project 2', description: 'Lorem ipsum dolor sit amet.', img: 'assets/images/background4.jpg', url: '#!' })
+- items.push({ title: 'Project 3', description: 'Lorem ipsum dolor sit amet.', img: 'assets/images/background5.jpg', url: '#!' })
+
+.parallax-container.valign-wrapper
   .section.no-pad-bot
     .container
       .row.center
-        h5.header.col.s12.light Section caption
+        h3.header.col.s12.lime-text.text-lighten-1
+          i.mdi-content-send
+
+        h5.header.col.s12.light Featured projects
 
   .parallax
     img(src='assets/images/background2.jpg', alt='Unsplashed background img 2')
 
 .container
-  .section
+  #projects.section.scrollspy
     .row
       .col.s12.center
-        h3
-          i.mdi-content-send
 
-        h4 Featured projects
+    .row
+      each item in items
+        .col.l4.m6.s12.center.projects
+          .card
+            .card-image.waves-effect.waves-block.waves-light
+              img.activator(src=item.img)
 
-        p.left-align.light Lorem ipsum dolor sit amet, consectetur adipiscing elit.
+            .card-content
+              span.card-title.activator.grey-text.text-darken-4
+                | #{item.title}
+                i.mdi-navigation-more-vert.right
+              p
+                a(href=item.url) Check it out
+
+            .card-reveal
+              span.card-title.grey-text.text-darken-4
+                | #{item.title}
+                i.mdi-navigation-close.right
+              p #{item.description}
