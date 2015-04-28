@@ -3,173 +3,22 @@ html(lang="en")
   head
     title Sublime portfolio
 
-    meta(charset="utf-8")
-    meta(http-equiv="X-UA-Compatible" content="IE=edge,chrome=1")
-    meta(name="description" content="")
-    meta(name="viewport" content="width=device-width,  initial-scale=1")
+    include includes/meta.jade
 
-    link(rel="apple-touch-icon" sizes="57x57" href="/apple-touch-icon-57x57.png")
-    link(rel="apple-touch-icon" sizes="60x60" href="/apple-touch-icon-60x60.png")
-    link(rel="apple-touch-icon" sizes="72x72" href="/apple-touch-icon-72x72.png")
-    link(rel="apple-touch-icon" sizes="76x76" href="/apple-touch-icon-76x76.png")
-    link(rel="apple-touch-icon" sizes="114x114" href="/apple-touch-icon-114x114.png")
-    link(rel="apple-touch-icon" sizes="120x120" href="/apple-touch-icon-120x120.png")
-    link(rel="apple-touch-icon" sizes="144x144" href="/apple-touch-icon-144x144.png")
-    link(rel="apple-touch-icon" sizes="152x152" href="/apple-touch-icon-152x152.png")
-    link(rel="icon" type="image/png" href="/favicon-32x32.png" sizes="32x32")
-    link(rel="icon" type="image/png" href="/favicon-96x96.png" sizes="96x96")
-    link(rel="icon" type="image/png" href="/favicon-16x16.png" sizes="16x16")
-    link(rel="manifest" href="/manifest.json")
-    meta(name="msapplication-TileColor" content="#ffffff")
-    meta(name="msapplication-TileImage" content="/mstile-144x144.png")
-    meta(name="theme-color" content="#ffffff")
+    include includes/favicons.jade
 
     link(rel="stylesheet" href="app.css")
 
   body
-    nav.white(role='navigation')
-      .nav-wrapper.container
-        a#logo-container.brand-logo(href='#') Logo
 
-        ul.right.hide-on-med-and-down
-          li
-            a(href='#') Navbar Link
+    include includes/nav.jade
 
-        ul#nav-mobile.side-nav
-          li
-            a(href='#') Navbar Link
+    include includes/parallax/intro.jade
 
-        a.button-collapse(href='#', data-activates='nav-mobile')
-          i.mdi-navigation-menu
+    include includes/parallax/projects.jade
 
-    #index-banner.parallax-container
-      .section.no-pad-bot
-        .container
-          br
-          br
+    include includes/parallax/contact.jade
 
-          h1.header.center.teal-text.text-lighten-2 Parallax Template
-
-          .row.center
-            h5.header.col.s12.light A modern responsive front-end framework based on Material Design
-
-          .row.center
-            a#download-button.btn-large.waves-effect.waves-light.teal.lighten-1(href='http://materializecss.com/getting-started.html') Get Started
-
-          br
-          br
-
-      .parallax
-        img(src='assets/images/background1.jpg', alt='Unsplashed background img 2')
-
-    .container
-      .section
-        // Icon Section
-        .row
-          .col.s12.m4
-            .icon-block
-              h2.center.brown-text
-                i.mdi-image-flash-on
-
-              h5.center Speeds up development
-
-              p.light
-                | We did most of the heavy lifting for you to provide a default stylings that incorporate our custom components. Additionally, we refined animations and transitions to provide a smoother experience for developers.
-
-          .col.s12.m4
-            .icon-block
-              h2.center.brown-text
-                i.mdi-social-group
-
-              h5.center User Experience Focused
-
-              p.light
-                | By utilizing elements and principles of Material Design, we were able to create a framework that incorporates components and animations that provide more feedback to users. Additionally, a single underlying responsive system across all platforms allow for a more unified user experience.
-
-          .col.s12.m4
-            .icon-block
-              h2.center.brown-text
-                i.mdi-action-settings
-
-              h5.center Easy to work with
-
-              p.light
-                | We have provided detailed documentation as well as specific code examples to help new users get started. We are also always open to feedback and can answer any questions a user may have about Materialize.
-
-    .parallax-container.valign-wrapper
-      .section.no-pad-bot
-        .container
-          .row.center
-            h5.header.col.s12.light A modern responsive front-end framework based on Material Design
-
-      .parallax
-        img(src='assets/images/background3.jpg', alt='Unsplashed background img 2')
-
-    .container
-      .section
-        .row
-          .col.s12.center
-            h3
-              i.mdi-content-send.brown-text
-
-            h4 Contact Us
-
-            p.left-align.light
-              | Lorem ipsum dolor sit amet, consectetur adipiscing elit. Nullam scelerisque id nunc nec volutpat. Etiam pellentesque tristique arcu, non consequat magna fermentum ac. Cras ut ultricies eros. Maecenas eros justo, ullamcorper a sapien id, viverra ultrices eros. Morbi sem neque, posuere et pretium eget, bibendum sollicitudin lacus. Aliquam eleifend sollicitudin diam, eu mattis nisl maximus sed. Nulla imperdiet semper molestie. Morbi massa odio, condimentum sed ipsum ac, gravida ultrices erat. Nullam eget dignissim mauris, non tristique erat. Vestibulum ante ipsum primis in faucibus orci luctus et ultrices posuere cubilia Curae;
-
-    .parallax-container.valign-wrapper
-      .section.no-pad-bot
-        .container
-          .row.center
-            h5.header.col.s12.light A modern responsive front-end framework based on Material Design
-
-      .parallax
-        img(src='assets/images/background2.jpg', alt='Unsplashed background img 3')
-
-    footer.page-footer.teal
-      .container
-        .row
-          .col.l6.s12
-            h5.white-text Company Bio
-
-            p.grey-text.text-lighten-4
-              | We are a team of college students working on this project like it&apos;s our full time job. Any amount would help support and continue development on this project and is greatly appreciated.
-
-          .col.l3.s12
-            h5.white-text Settings
-
-            ul
-              li
-                a.white-text(href='#!') Link 1
-
-              li
-                a.white-text(href='#!') Link 2
-
-              li
-                a.white-text(href='#!') Link 3
-
-              li
-                a.white-text(href='#!') Link 4
-
-          .col.l3.s12
-            h5.white-text Connect
-
-            ul
-              li
-                a.white-text(href='#!') Link 1
-
-              li
-                a.white-text(href='#!') Link 2
-
-              li
-                a.white-text(href='#!') Link 3
-
-              li
-                a.white-text(href='#!') Link 4
-
-      .footer-copyright
-        .container
-          | Made by
-          a.brown-text.text-lighten-3(href='http://materializecss.com') Materialize
+    include includes/footer.jade
 
     script(src="bundle.js")
