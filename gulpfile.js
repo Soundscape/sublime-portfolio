@@ -3,6 +3,7 @@
 
   var gulp = require('gulp'),
     plugins = require('gulp-load-plugins')(),
+    NwBuilder = require('node-webkit-builder'),
     help = plugins.help(gulp),
     rimraf = require('rimraf'),
     path = require('path'),
@@ -54,6 +55,25 @@
 
     return gulp.src(paths.www)
       .pipe(plugins.webserver(opts));
+  });
+
+
+  gulp.task('desktop', ['build'], function (cb) {
+    var nw = new NwBuilder({
+      appName: 'sublime.portfolio',
+      files: './www/',
+      buildDir: '../out/',
+      platforms: ['osx32', 'osx64', 'win32', 'win64', 'linux32', 'linux64']
+    });
+
+    nw.on('log',  console.log);
+    nw.build().then(function () {
+      console.log('all done!');
+      cb();
+    }).catch(function (error) {
+      console.error(error);
+      cb();
+    });
   });
 
   gulp.task('bump-major', 'Bumps the major build number', function () {

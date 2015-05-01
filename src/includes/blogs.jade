@@ -1,7 +1,9 @@
-.col.s12.m12.l4
+#blogs.col.s12.m12.l4
   h5 Latest blogs
 
-  ul#blogs.stagger
+  include ./preloader.jade
+
+  ul.stagger
 
   a.modal-trigger.btn.waves-effect.waves-light.teal.lighten-1(href='#subscribe') Subscribe
 
@@ -12,3 +14,11 @@
 
     .modal-footer
       a.btn.modal-action.modal-close.waves-effect.waves-light.btn-flatteal.lighten-1(href="#!") Agree
+
+  #view.modal
+    .modal-content
+      h4 Blog Title
+      p Lorem ipsum dolor sit amet.
+
+    .modal-footer
+      a.btn.modal-action.modal-close.waves-effect.waves-light.btn-flatteal.lighten-1(href="#!") Close

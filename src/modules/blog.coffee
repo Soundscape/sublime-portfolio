@@ -7,17 +7,19 @@ class Blog
     @fetch()
 
   render: (items) ->
-    @el.empty()
+    $('.preloader-wrapper', @el).fadeOut('fast')
+    $('ul', @el).empty()
 
     items.forEach (item) =>
       li = $('<li />')
-      $('<a />', { href: '#!', text: item.title }).appendTo li
-      icon = $('<a />', { href: '#!', 'class': 'secondary-content' }).appendTo li
+      $('<a />', { href: '#view', text: item.title, 'data-target': 'view', 'class': 'modal-trigger' }).appendTo li
+      icon = $('<a />', { href: '#view', 'data-target': 'view', 'class': 'secondary-content modal-trigger' }).appendTo li
       $('<i />', { 'class': 'mdi-content-send' }).appendTo icon
       $('<div />', { text: item.summary }).appendTo li
-      li.appendTo @el
+      li.appendTo $('ul', @el)
 
     window.Materialize.showStaggeredList @el
+    $('.modal-trigger', @el).leanModal()
 
   fetch: () ->
     db.query('blog').on 'value', (s) =>
