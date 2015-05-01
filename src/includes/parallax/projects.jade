@@ -20,22 +20,4 @@
     .row
       .col.s12.center
 
-    .row
-      each item in items
-        .col.l4.m6.s12.center.projects
-          .card
-            .card-image.waves-effect.waves-block.waves-light
-              img.activator(src=item.img)
-
-            .card-content
-              span.card-title.activator.grey-text.text-darken-4
-                | #{item.title}
-                i.mdi-navigation-more-vert.right
-              p
-                a(href=item.url) Check it out
-
-            .card-reveal
-              span.card-title.grey-text.text-darken-4
-                | #{item.title}
-                i.mdi-navigation-close.right
-              p #{item.description}
+    #projects.row

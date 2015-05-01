@@ -1,25 +1,14 @@
-- var total = 5
-- var item = { title: 'Entry', description: 'Lorem ipsum dolor sit amet.', url: '#!' }
-
-.col.s12.m8.l4
+.col.s12.m12.l4
   h5 Latest blogs
 
-  ul.stagger
-    while total > 0
-      li
-        strong #{item.title + ' #' + total}
-        a.secondary-content(href=item.url)
-          i.mdi-content-send
-        div= item.description
-
-      - total--
+  ul#blogs.stagger
 
   a.modal-trigger.btn.waves-effect.waves-light.teal.lighten-1(href='#subscribe') Subscribe
 
-  div#subscribe.modal.modal-fixed-footer
+  #subscribe.modal
     .modal-content
       h4 Modal Header
       p A bunch of text
 
     .modal-footer
-      a.modal-action.modal-close.waves-effect.waves-light.btn-flatteal.lighten-1 Agree
+      a.btn.modal-action.modal-close.waves-effect.waves-light.btn-flatteal.lighten-1(href="#!") Agree
