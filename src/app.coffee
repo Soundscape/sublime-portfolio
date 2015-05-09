@@ -38,7 +38,7 @@ $ () ->
   Materialize.scrollFire(options)
   log.log 'ScrollFire initialized'
 
-  mailer = new Mail.Mailer 'EYIeIGBo1DOZnzBzvRFR3w'
+  mailer = new Mail.Mailer '--api--'
   $('form').on 'submit', (e) ->
     console.log arguments, @
 
