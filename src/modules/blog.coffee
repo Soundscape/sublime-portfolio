@@ -7,7 +7,7 @@ class Blog
     @fetch()
 
   render: (items) ->
-    $('.preloader-wrapper', @el).fadeOut('fast')
+    $('.preloader-wrapper', @el).fadeOut 'fast'
     $('ul', @el).empty()
 
     items.forEach (item) =>

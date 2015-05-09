@@ -30,6 +30,7 @@ class Projects
       wave = $('<span />', { text: item.title }).appendTo title
       wave = $('<i />', { 'class': 'mdi-navigation-close right' }).appendTo title
       $('<p />', { text: item.summary }).appendTo reveal
+      $('<iframe />', { src: 'https://ghbtns.com/github-btn.html?user=soundscape&repo=sublime-core&type=star&count=false&size=large', frameborder: '0', scrolling: '0', width: '160px', height: '30px' }).appendTo reveal
 
       project.appendTo @el
 

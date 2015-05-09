@@ -54,4 +54,4 @@ class FirebaseContext
 
     ref
 
-module.exports = new FirebaseContext 'https://blaze-tk.firebaseio.com/'
+module.exports = new FirebaseContext 'https://sublime-dev.firebaseio.com/'

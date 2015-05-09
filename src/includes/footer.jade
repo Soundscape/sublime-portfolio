@@ -1,27 +1,32 @@
 - var items = []
-- items.push({ href: '#!', text: 'Link 1' })
-- items.push({ href: '#!', text: 'Link 2' })
-- items.push({ href: '#!', text: 'Link 3' })
-- items.push({ href: '#!', text: 'Link 4' })
-
-- var lists = 3
+- items.push({ href: '#intro', text: 'About me' })
+- items.push({ href: '#projects', text: 'Projects' })
+- items.push({ href: '#contact', text: 'Contact' })
 
 footer.page-footer.teal
   .container
     .row
+      .col.s12.m4.l4
+        h5.white-text Quick links
+        ul
+          for item in items
+            li
+              a.white-text(href=item.href) #{item.text}
 
-      while lists > 0
-        .col.l4.m4.s6
-          h5.white-text Links #{lists}
 
-          ul
-            for item in items
-              li
-                a.white-text(href=item.href) #{item.text}
+        iframe(src="https://ghbtns.com/github-btn.html?user=soundscape&type=follow&count=true&size=large" frameborder="0" scrolling="0" width="220px" height="30px")
 
-        - lists--
+      .col.s12.m8.l8.white-text
+        h5.white-text Contact info
+
+        h6.mdi-action-home Address
+        p Nr. 13, 323 York Avenue, Johannesburg, SA
+        h6.mdi-hardware-phone-android Phone Number
+        p +27 78 246 9605
+        h6.mdi-action-open-in-browser Website
+        p sublime-dev.firebaseapp.com
 
   .footer-copyright
     .container
       | Made by&nbsp;
-      a.brown-text.text-lighten-3(href='#!') Soundscape
+      a.brown-text.text-lighten-3(href='#intro') Shaun Farrell

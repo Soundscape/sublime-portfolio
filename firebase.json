@@ -1,5 +1,5 @@
 {
-  "firebase": "blaze-tk",
+  "firebase": "sublime-dev",
   "public": "./www",
   "ignore": [
     "firebase.json",

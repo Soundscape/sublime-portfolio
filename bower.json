@@ -1,0 +1,20 @@
+{
+  "name": "sublime-portfolio",
+  "version": "0.0.525",
+  "description": "My portfolio web site",
+  "authors": [
+    "soundscape"
+  ],
+  "license": "MIT",
+  "ignore": [
+    "**/.*",
+    "node_modules",
+    "bower_components",
+    "test",
+    "tests"
+  ],
+  "dependencies": {
+    "jquery": "~2.1.4",
+    "materialize": "~0.96.1"
+  }
+}
