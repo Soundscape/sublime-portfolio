@@ -3,6 +3,7 @@ $ = require 'jquery'
 
 class Projects
   constructor: (el) ->
+    window.db = db
     @el = $ el
     @el.addClass 'row'
     @fetch()
@@ -11,7 +12,7 @@ class Projects
     @el.empty()
 
     items.forEach (item) =>
-      project = $('<div />', { 'class': 'col l4 m6 s12 center projects' })
+      project = $('<div />', { 'class': 'col l3 m6 s12 center projects' })
       card = $('<div />', { 'class': 'card' }).appendTo project
 
       img = $('<div />', { 'class': 'card-image waves-effect waves-block waves-light' }).appendTo card
@@ -23,14 +24,13 @@ class Projects
       $('<i />', { 'class': 'mdi-navigation-more-vert right' }).appendTo title
 
       p = $('<p />').appendTo content
-      a = $('<a />', { href: item.href, text: 'Check it out' }).appendTo p
 
       reveal = $('<div />', { 'class': 'card-reveal' }).appendTo card
       title = $('<span />', { 'class': 'card-title grey-text text-darken-4' }).appendTo reveal
       wave = $('<span />', { text: item.title }).appendTo title
       wave = $('<i />', { 'class': 'mdi-navigation-close right' }).appendTo title
       $('<p />', { text: item.summary }).appendTo reveal
-      $('<iframe />', { src: 'https://ghbtns.com/github-btn.html?user=soundscape&repo=sublime-core&type=star&count=false&size=large', frameborder: '0', scrolling: '0', width: '160px', height: '30px' }).appendTo reveal
+      $('<iframe />', { src: 'https://ghbtns.com/github-btn.html?user=' + item.user + '&repo=' + item.repo + '&type=star&count=false&size=large', frameborder: '0', scrolling: '0', width: '160px', height: '30px' }).appendTo reveal
 
       project.appendTo @el
 

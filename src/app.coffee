@@ -16,7 +16,7 @@ $ () ->
   $('.modal-trigger').leanModal()
   log.log 'Modals initialized'
 
-  new Blog document.querySelector('#blogs')
+  #new Blog document.querySelector('#blogs')
   new Projects document.querySelector('#projects .row')
 
   $('.scrollspy').scrollSpy()
