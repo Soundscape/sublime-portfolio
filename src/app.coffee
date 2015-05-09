@@ -2,9 +2,19 @@ $ = require 'jquery'
 log = require './modules/log'
 Blog = require './modules/blog'
 Projects = require './modules/projects'
+Mail = require 'sublime-mail'
 require 'materialize'
 
 $ () ->
+  open = XMLHttpRequest.prototype.open
+  XMLHttpRequest.prototype.open = (method, url, async, user, pass) ->
+    @addEventListener 'readystatechange', () ->
+      if @withCredentials
+        @withCredentials = false
+    , false
+
+    open.call @, method, url, async, user, pass
+
   log.log 'Logger initialized'
 
   $('.button-collapse').sideNav(closeOnClick: true)
@@ -27,3 +37,17 @@ $ () ->
   ];
   Materialize.scrollFire(options)
   log.log 'ScrollFire initialized'
+
+  mailer = new Mail.Mailer 'EYIeIGBo1DOZnzBzvRFR3w'
+  $('form').on 'submit', (e) ->
+    console.log arguments, @
+
+    mailer.send(
+      'shaunfarrell@g.harvard.edu'
+      $('#email').val()
+      'Message from ' + $('#first_name').val() + ' ' + $('#last_name').val()
+      $('textarea').val()
+    )
+
+    e.preventDefault()
+    false
