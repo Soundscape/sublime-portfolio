@@ -1,2 +1,2 @@
 # sublime-portfolio
-// TODO: Write up the readme file.
+Project for my portfolio site.
