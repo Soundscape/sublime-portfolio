@@ -12,7 +12,7 @@ class Projects
     @el.empty()
 
     items.forEach (item) =>
-      project = $('<div />', { 'class': 'col l3 m6 s12 center projects' })
+      project = $('<div />', { 'class': 'col l6 m6 s12 center projects' })
       card = $('<div />', { 'class': 'card' }).appendTo project
 
       img = $('<div />', { 'class': 'card-image waves-effect waves-block waves-light' }).appendTo card
