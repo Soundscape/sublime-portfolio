@@ -5,14 +5,17 @@ class Projects
   constructor: (el) ->
     window.db = db
     @el = $ el
-    @el.addClass 'row'
     @fetch()
 
   render: (items) ->
     @el.empty()
 
-    items.forEach (item) =>
-      project = $('<div />', { 'class': 'col l6 m6 s12 center projects' })
+    row = null
+    items.forEach (item, i) =>
+      if i % 3 == 0
+        row = $('<div />', { 'class': 'row' }).appendTo @el
+
+      project = $('<div />', { 'class': 'col l4 m4 s12 center projects' })
       card = $('<div />', { 'class': 'card' }).appendTo project
 
       img = $('<div />', { 'class': 'card-image waves-effect waves-block waves-light' }).appendTo card
@@ -32,7 +35,7 @@ class Projects
       $('<p />', { text: item.summary }).appendTo reveal
       $('<iframe />', { src: 'https://ghbtns.com/github-btn.html?user=' + item.user + '&repo=' + item.repo + '&type=star&count=false&size=large', frameborder: '0', scrolling: '0', width: '160px', height: '30px' }).appendTo reveal
 
-      project.appendTo @el
+      project.appendTo row
 
   fetch: () ->
     db.query('project').on 'value', (s) =>
@@ -45,7 +48,6 @@ class Projects
           item._id = key
           items.push item
 
-      @render items
-
+      @render items.sort (a, b) -> a.title > b.title
 
 module.exports = Projects
