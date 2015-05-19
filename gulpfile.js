@@ -58,7 +58,7 @@
     gulp.watch(['./out/server.js'], svr.start);
   });
 
-  gulp.task('build', 'Builds the application', ['clean', 'fonts', 'assets', 'views', 'browserify', 'sass']);
+  gulp.task('build', 'Builds the application', ['clean', 'fonts', 'assets', 'views', 'scripts', 'sass']);
 
   gulp.task('default', ['watch', 'run']);
 
@@ -87,7 +87,7 @@
   });
 
   gulp.task('scripts', ['browserify'], function() {
-    return gulp.src(paths.out + 'app.js')
+    return gulp.src(paths.out + 'bundle.js')
       .pipe(plugins.uglify())
       .pipe(gulp.dest(paths.out))
       .on('error', plugins.util.log.bind(plugins.util, 'Uglify Error'));
