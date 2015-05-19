@@ -30,4 +30,4 @@ node_modules
 bower_components
 
 # Output directory
-www
+out

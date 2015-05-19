@@ -1,4 +1,9 @@
-@import 'materialize/materialize';
+@import '../../bower_components/materialize/sass/materialize';
+
+.project-button {
+  width: 160px;
+  height: 30px;
+}
 
 /* Custom Stylesheet */
 /**
@@ -8,17 +13,8 @@
  * Made By MaterializeCSS.com
  */
 
-nav ul a,
-nav .brand-logo {
-  color: #444;
-}
-
 p {
   line-height: 2rem;
-}
-
-.button-collapse {
-  color: #26a69a;
 }
 
 .parallax-container {
@@ -36,13 +32,13 @@ p {
     position: absolute;
     top: 40%;
   }
-  #index-banner .section {
+  #first .section {
     top: 10%;
   }
 }
 
 @media only screen and (max-width : 600px) {
-  #index-banner .section {
+  #first .section {
     top: 0;
   }
 }
@@ -59,8 +55,4 @@ footer.page-footer {
 
 ul.stagger > li {
   opacity: 0;
-}
-
-#one {
-  color: #ff8000;
 }

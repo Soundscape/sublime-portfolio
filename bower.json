@@ -1,10 +1,7 @@
 {
   "name": "sublime-portfolio",
-  "version": "0.0.666",
-  "description": "My portfolio web site",
-  "authors": [
-    "soundscape"
-  ],
+  "version": "0.0.667",
+  "homepage": "https://github.com/Soundscape/sublime-portfolio",
   "license": "MIT",
   "ignore": [
     "**/.*",
