@@ -1,5 +1,5 @@
 React = require 'react'
-mailer = require '../modules/mailer'
+$ = require 'jquery'
 
 module.exports = ContactForm = React.createClass
   render: () ->
@@ -20,7 +20,7 @@ module.exports = ContactForm = React.createClass
           <label for="email">E-mail</label>
         </div>
       </div>
-      <textarea placeholder="Your Message" required className="materialize-textarea"></textarea>
+      <textarea id="message" placeholder="Your Message" required className="materialize-textarea"></textarea>
       <button type="submit" name="action" className="btn waves-effect waves-light right">
         Submit
         <i className="mdi-content-send right"></i>
@@ -29,10 +29,11 @@ module.exports = ContactForm = React.createClass
 
   handleSubmit: (e) ->
     e.preventDefault()
-    window .q = mailer
-    mailer.send(
-      'shaunfarrell@g.harvard.edu'
-      $('#email').val()
-      'Message from ' + $('#first_name').val() + ' ' + $('#last_name').val()
-      $('textarea').val()
-    )
+    $.post '/mail', {
+      email: $('#email').val()
+      first_name: $('#first_name').val()
+      last_name: $('#last_name').val()
+      content: $('#message').val()
+    }
+    
+    $('form')[0].reset()

@@ -8,9 +8,11 @@ cookieParser = require 'cookie-parser'
 compress = require 'compression'
 cons = require 'consolidate'
 
+Mail = require 'sublime-mail'
+mailer = new Mail.Mailer process.env.MANDRILL_KEY
+
 cfg =
   server:
-    port: 3000
     staticCache: 6048000000
     ssl: false
     key: ''
@@ -34,6 +36,15 @@ server.use (app) ->
 
   app.get '/', (req, res) ->
     res.render 'home'
+
+  app.post '/mail', (req, res) ->
+    mailer.send(
+      process.env.WEBMASTER_EMAIL
+      req.body.email
+      "Message from #{req.body.first_name} #{req.body.last_name}"
+      req.body.content
+    )
+    res.status(200).end()
 
   app.use express.static(
     './out/',
