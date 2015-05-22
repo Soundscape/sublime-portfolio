@@ -21,7 +21,7 @@ cfg =
 server = new Application cfg.server
 
 server.use (app) ->
-  app.use(require('connect-livereload')())
+  #app.use(require('connect-livereload')())
 
   app.cookieParser = cookieParser()
 
