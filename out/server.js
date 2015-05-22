@@ -35,7 +35,6 @@
   server = new Application(cfg.server);
 
   server.use(function(app) {
-    app.use(require('connect-livereload')());
     app.cookieParser = cookieParser();
     app.engine('html', cons.handlebars);
     app.set('view engine', 'html');
