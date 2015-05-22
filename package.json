@@ -61,6 +61,7 @@
     "nconf": "^0.7.1",
     "react": "^0.13.3",
     "sublime-application": "0.0.9",
+    "sublime-core": "0.0.22",
     "sublime-mail": "0.0.26",
     "sublime-net": "0.0.12",
     "sugar": "^1.4.1",
