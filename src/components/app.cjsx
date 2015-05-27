@@ -5,17 +5,13 @@ ParallaxSection = require './parallax.section'
 ContactForm = require './contact.form'
 Projects = require './projects'
 Footer = require './footer'
-Chance = require 'chance'
-chance = new Chance()
-
-copy = for i in [1..3]
-  chance.paragraph()
+Markdown = require './markdown' 
 
 React.render(
   <div>
     <NavBar className="blue-grey darken-3" title="portfolio" />
 
-    <ParallaxSection id="first" src="https://sublime-dev.firebaseapp.com/assets/images/background22.jpg">
+    <ParallaxSection id="first" src="assets/images/background22.jpg">
       <br />
       <br />
       <h1 className="header center teal-text">Shaun Farrell</h1>
@@ -39,7 +35,7 @@ React.render(
       </div>
     </Parallax>
 
-    <ParallaxSection src="https://sublime-dev.firebaseapp.com/assets/images/background21.jpg">
+    <ParallaxSection src="assets/images/background21.jpg">
       <div className="row center">
         <h3 className="header col s12 cyan-text text-lighten-1">
           <i className="mdi-content-send"></i>
@@ -51,7 +47,7 @@ React.render(
       <Projects />
     </Parallax>
 
-    <ParallaxSection src="https://sublime-dev.firebaseapp.com/assets/images/background23.jpg">
+    <ParallaxSection src="assets/images/background23.jpg">
       <div className="row center">
         <h3 className="header col s12 cyan-text text-lighten-1">
           <i className="mdi-content-send"></i>

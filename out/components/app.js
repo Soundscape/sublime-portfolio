@@ -1,4 +1,4 @@
-var Chance, ContactForm, Footer, NavBar, Parallax, ParallaxSection, Projects, React, chance, copy, i;
+var ContactForm, Footer, Markdown, NavBar, Parallax, ParallaxSection, Projects, React;
 
 React = require('react');
 
@@ -14,25 +14,14 @@ Projects = require('./projects');
 
 Footer = require('./footer');
 
-Chance = require('chance');
-
-chance = new Chance();
-
-copy = (function() {
-  var j, results;
-  results = [];
-  for (i = j = 1; j <= 3; i = ++j) {
-    results.push(chance.paragraph());
-  }
-  return results;
-})();
+Markdown = require('./markdown');
 
 React.render(React.createElement("div", null, React.createElement(NavBar, {
   "className": "blue-grey darken-3",
   "title": "portfolio"
 }), React.createElement(ParallaxSection, {
   "id": "first",
-  "src": "https://sublime-dev.firebaseapp.com/assets/images/background22.jpg"
+  "src": "assets/images/background22.jpg"
 }, React.createElement("br", null), React.createElement("br", null), React.createElement("h1", {
   "className": "header center teal-text"
 }, "Shaun Farrell"), React.createElement("div", {
@@ -57,7 +46,7 @@ React.render(React.createElement("div", null, React.createElement(NavBar, {
   "href": "http://www.extension.harvard.edu/",
   "target": "_blank"
 }, "Harvard Extension School"), ".")))), React.createElement(ParallaxSection, {
-  "src": "https://sublime-dev.firebaseapp.com/assets/images/background21.jpg"
+  "src": "assets/images/background21.jpg"
 }, React.createElement("div", {
   "className": "row center"
 }, React.createElement("h3", {
@@ -70,7 +59,7 @@ React.render(React.createElement("div", null, React.createElement(NavBar, {
   "id": "projects",
   "title": "Featured projects"
 }, React.createElement(Projects, null)), React.createElement(ParallaxSection, {
-  "src": "https://sublime-dev.firebaseapp.com/assets/images/background23.jpg"
+  "src": "assets/images/background23.jpg"
 }, React.createElement("div", {
   "className": "row center"
 }, React.createElement("h3", {

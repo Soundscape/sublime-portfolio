@@ -1,3 +1,5 @@
+require './tracking'
+
 $ = require 'jquery'
 require 'materialize'
 require '../components/app'
@@ -10,4 +12,5 @@ $ () ->
   options = [
     #{ selector: '#projects', offset: 50, callback: 'Materialize.toast("This is our ScrollFire Demo!", 1500 )' }
   ];
+  
   Materialize.scrollFire options

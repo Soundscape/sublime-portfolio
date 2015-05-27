@@ -1,4 +1,4 @@
 # sublime-portfolio
 Project for my portfolio site.
 
-[sublime-dev.firebaseapp.com](https://sublime-dev.firebaseapp.com/)
+[sublime-portfolio.herokuapp.com](https://sublime-portfolio.herokuapp.com/)

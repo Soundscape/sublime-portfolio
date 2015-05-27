@@ -1,6 +1,8 @@
 (function() {
   var $;
 
+  require('./tracking');
+
   $ = require('jquery');
 
   require('materialize');
