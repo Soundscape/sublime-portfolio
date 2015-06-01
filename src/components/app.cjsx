@@ -3,7 +3,7 @@ NavBar = require './navbar'
 Parallax = require './parallax'
 ParallaxSection = require './parallax.section'
 ContactForm = require './contact.form'
-Projects = require './projects'
+ProjectList = require './project.list'
 Footer = require './footer'
 Markdown = require './markdown' 
 
@@ -44,7 +44,7 @@ React.render(
       </div>
     </ParallaxSection>
     <Parallax id="projects" title="Featured projects">
-      <Projects />
+      <ProjectList size="4" />
     </Parallax>
 
     <ParallaxSection src="assets/images/background23.jpg">

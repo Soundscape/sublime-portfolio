@@ -1,6 +1,6 @@
 {
   "name": "sublime-portfolio",
-  "version": "0.0.667",
+  "version": "0.0.668",
   "description": "My portfolio web site",
   "main": "./out/server.js",
   "repository": {
@@ -58,6 +58,7 @@
     "handlebars": "^3.0.0",
     "helmet": "^0.7.0",
     "http": "0.0.0",
+    "linq": "^3.0.4-beta",
     "lodash": "^3.5.0",
     "morgan": "^1.5.2",
     "nconf": "^0.7.1",

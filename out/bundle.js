@@ -24,7 +24,7 @@
 
 }).call(this);
 
-},{"../components/app":261,"./tracking":272,"jquery":2,"materialize":3}],2:[function(require,module,exports){
+},{"../components/app":262,"./tracking":273,"jquery":2,"materialize":3}],2:[function(require,module,exports){
 (function (global){
 ; var __browserify_shim_require__=require;(function browserifyShim(module, exports, require, define, browserify_shim__define__module__export__) {
 /*!
@@ -10242,6 +10242,3024 @@ function hasOwnProperty(obj, prop) {
 
 }).call(this,require('_process'),typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
 },{"./support/isBuffer":7,"_process":6,"inherits":5}],9:[function(require,module,exports){
+/*--------------------------------------------------------------------------
+ * linq.js - LINQ for JavaScript
+ * ver 3.0.4-Beta5 (Jun. 20th, 2013)
+ *
+ * created and maintained by neuecc <ils@neue.cc>
+ * licensed under MIT License
+ * http://linqjs.codeplex.com/
+ *------------------------------------------------------------------------*/
+
+(function (root, undefined) {
+    // ReadOnly Function
+    var Functions = {
+        Identity: function (x) { return x; },
+        True: function () { return true; },
+        Blank: function () { }
+    };
+
+    // const Type
+    var Types = {
+        Boolean: typeof true,
+        Number: typeof 0,
+        String: typeof "",
+        Object: typeof {},
+        Undefined: typeof undefined,
+        Function: typeof function () { }
+    };
+
+    // createLambda cache
+    var funcCache = { "": Functions.Identity };
+
+    // private utility methods
+    var Utils = {
+        // Create anonymous function from lambda expression string
+        createLambda: function (expression) {
+            if (expression == null) return Functions.Identity;
+            if (typeof expression === Types.String) {
+                // get from cache
+                var f = funcCache[expression];
+                if (f != null) {
+                    return f;
+                }
+
+                if (expression.indexOf("=>") === -1) {
+                    var regexp = new RegExp("[$]+", "g");
+
+                    var maxLength = 0;
+                    var match;
+                    while ((match = regexp.exec(expression)) != null) {
+                        var paramNumber = match[0].length;
+                        if (paramNumber > maxLength) {
+                            maxLength = paramNumber;
+                        }
+                    }
+
+                    var argArray = [];
+                    for (var i = 1; i <= maxLength; i++) {
+                        var dollar = "";
+                        for (var j = 0; j < i; j++) {
+                            dollar += "$";
+                        }
+                        argArray.push(dollar);
+                    }
+
+                    var args = Array.prototype.join.call(argArray, ",");
+
+                    f = new Function(args, "return " + expression);
+                    funcCache[expression] = f;
+                    return f;
+                }
+                else {
+                    var expr = expression.match(/^[(\s]*([^()]*?)[)\s]*=>(.*)/);
+                    f = new Function(expr[1], "return " + expr[2]);
+                    funcCache[expression] = f;
+                    return f;
+                }
+            }
+            return expression;
+        },
+
+        isIEnumerable: function (obj) {
+            if (typeof Enumerator !== Types.Undefined) {
+                try {
+                    new Enumerator(obj); // check JScript(IE)'s Enumerator
+                    return true;
+                }
+                catch (e) { }
+            }
+
+            return false;
+        },
+
+        // IE8's defineProperty is defined but cannot use, therefore check defineProperties
+        defineProperty: (Object.defineProperties != null)
+            ? function (target, methodName, value) {
+                Object.defineProperty(target, methodName, {
+                    enumerable: false,
+                    configurable: true,
+                    writable: true,
+                    value: value
+                })
+            }
+            : function (target, methodName, value) {
+                target[methodName] = value;
+            },
+
+        compare: function (a, b) {
+            return (a === b) ? 0
+                 : (a > b) ? 1
+                 : -1;
+        },
+
+        dispose: function (obj) {
+            if (obj != null) obj.dispose();
+        }
+    };
+
+    // IEnumerator State
+    var State = { Before: 0, Running: 1, After: 2 };
+
+    // "Enumerator" is conflict JScript's "Enumerator"
+    var IEnumerator = function (initialize, tryGetNext, dispose) {
+        var yielder = new Yielder();
+        var state = State.Before;
+
+        this.current = yielder.current;
+
+        this.moveNext = function () {
+            try {
+                switch (state) {
+                    case State.Before:
+                        state = State.Running;
+                        initialize();
+                        // fall through
+                    case State.Running:
+                        if (tryGetNext.apply(yielder)) {
+                            return true;
+                        }
+                        else {
+                            this.dispose();
+                            return false;
+                        }
+                    case State.After:
+                        return false;
+                }
+            }
+            catch (e) {
+                this.dispose();
+                throw e;
+            }
+        };
+
+        this.dispose = function () {
+            if (state != State.Running) return;
+
+            try {
+                dispose();
+            }
+            finally {
+                state = State.After;
+            }
+        };
+    };
+
+    // for tryGetNext
+    var Yielder = function () {
+        var current = null;
+        this.current = function () { return current; };
+        this.yieldReturn = function (value) {
+            current = value;
+            return true;
+        };
+        this.yieldBreak = function () {
+            return false;
+        };
+    };
+
+    // Enumerable constuctor
+    var Enumerable = function (getEnumerator) {
+        this.getEnumerator = getEnumerator;
+    };
+
+    // Utility
+
+    Enumerable.Utils = {}; // container
+
+    Enumerable.Utils.createLambda = function (expression) {
+        return Utils.createLambda(expression);
+    };
+
+    Enumerable.Utils.createEnumerable = function (getEnumerator) {
+        return new Enumerable(getEnumerator);
+    };
+
+    Enumerable.Utils.createEnumerator = function (initialize, tryGetNext, dispose) {
+        return new IEnumerator(initialize, tryGetNext, dispose);
+    };
+
+    Enumerable.Utils.extendTo = function (type) {
+        var typeProto = type.prototype;
+        var enumerableProto;
+
+        if (type === Array) {
+            enumerableProto = ArrayEnumerable.prototype;
+            Utils.defineProperty(typeProto, "getSource", function () {
+                return this;
+            });
+        }
+        else {
+            enumerableProto = Enumerable.prototype;
+            Utils.defineProperty(typeProto, "getEnumerator", function () {
+                return Enumerable.from(this).getEnumerator();
+            });
+        }
+
+        for (var methodName in enumerableProto) {
+            var func = enumerableProto[methodName];
+
+            // already extended
+            if (typeProto[methodName] == func) continue;
+
+            // already defined(example Array#reverse/join/forEach...)
+            if (typeProto[methodName] != null) {
+                methodName = methodName + "ByLinq";
+                if (typeProto[methodName] == func) continue; // recheck
+            }
+
+            if (func instanceof Function) {
+                Utils.defineProperty(typeProto, methodName, func);
+            }
+        }
+    };
+
+    // Generator
+
+    Enumerable.choice = function () // variable argument
+    {
+        var args = arguments;
+
+        return new Enumerable(function () {
+            return new IEnumerator(
+                function () {
+                    args = (args[0] instanceof Array) ? args[0]
+                        : (args[0].getEnumerator != null) ? args[0].toArray()
+                        : args;
+                },
+                function () {
+                    return this.yieldReturn(args[Math.floor(Math.random() * args.length)]);
+                },
+                Functions.Blank);
+        });
+    };
+
+    Enumerable.cycle = function () // variable argument
+    {
+        var args = arguments;
+
+        return new Enumerable(function () {
+            var index = 0;
+            return new IEnumerator(
+                function () {
+                    args = (args[0] instanceof Array) ? args[0]
+                        : (args[0].getEnumerator != null) ? args[0].toArray()
+                        : args;
+                },
+                function () {
+                    if (index >= args.length) index = 0;
+                    return this.yieldReturn(args[index++]);
+                },
+                Functions.Blank);
+        });
+    };
+
+    Enumerable.empty = function () {
+        return new Enumerable(function () {
+            return new IEnumerator(
+                Functions.Blank,
+                function () { return false; },
+                Functions.Blank);
+        });
+    };
+
+    Enumerable.from = function (obj) {
+        if (obj == null) {
+            return Enumerable.empty();
+        }
+        if (obj instanceof Enumerable) {
+            return obj;
+        }
+        if (typeof obj == Types.Number || typeof obj == Types.Boolean) {
+            return Enumerable.repeat(obj, 1);
+        }
+        if (typeof obj == Types.String) {
+            return new Enumerable(function () {
+                var index = 0;
+                return new IEnumerator(
+                    Functions.Blank,
+                    function () {
+                        return (index < obj.length) ? this.yieldReturn(obj.charAt(index++)) : false;
+                    },
+                    Functions.Blank);
+            });
+        }
+        if (typeof obj != Types.Function) {
+            // array or array like object
+            if (typeof obj.length == Types.Number) {
+                return new ArrayEnumerable(obj);
+            }
+
+            // JScript's IEnumerable
+            if (!(obj instanceof Object) && Utils.isIEnumerable(obj)) {
+                return new Enumerable(function () {
+                    var isFirst = true;
+                    var enumerator;
+                    return new IEnumerator(
+                        function () { enumerator = new Enumerator(obj); },
+                        function () {
+                            if (isFirst) isFirst = false;
+                            else enumerator.moveNext();
+
+                            return (enumerator.atEnd()) ? false : this.yieldReturn(enumerator.item());
+                        },
+                        Functions.Blank);
+                });
+            }
+
+            // WinMD IIterable<T>
+            if (typeof Windows === Types.Object && typeof obj.first === Types.Function) {
+                return new Enumerable(function () {
+                    var isFirst = true;
+                    var enumerator;
+                    return new IEnumerator(
+                        function () { enumerator = obj.first(); },
+                        function () {
+                            if (isFirst) isFirst = false;
+                            else enumerator.moveNext();
+
+                            return (enumerator.hasCurrent) ? this.yieldReturn(enumerator.current) : this.yieldBreak();
+                        },
+                        Functions.Blank);
+                });
+            }
+        }
+
+        // case function/object : Create keyValuePair[]
+        return new Enumerable(function () {
+            var array = [];
+            var index = 0;
+
+            return new IEnumerator(
+                function () {
+                    for (var key in obj) {
+                        var value = obj[key];
+                        if (!(value instanceof Function) && Object.prototype.hasOwnProperty.call(obj, key)) {
+                            array.push({ key: key, value: value });
+                        }
+                    }
+                },
+                function () {
+                    return (index < array.length)
+                        ? this.yieldReturn(array[index++])
+                        : false;
+                },
+                Functions.Blank);
+        });
+    },
+
+    Enumerable.make = function (element) {
+        return Enumerable.repeat(element, 1);
+    };
+
+    // Overload:function(input, pattern)
+    // Overload:function(input, pattern, flags)
+    Enumerable.matches = function (input, pattern, flags) {
+        if (flags == null) flags = "";
+        if (pattern instanceof RegExp) {
+            flags += (pattern.ignoreCase) ? "i" : "";
+            flags += (pattern.multiline) ? "m" : "";
+            pattern = pattern.source;
+        }
+        if (flags.indexOf("g") === -1) flags += "g";
+
+        return new Enumerable(function () {
+            var regex;
+            return new IEnumerator(
+                function () { regex = new RegExp(pattern, flags); },
+                function () {
+                    var match = regex.exec(input);
+                    return (match) ? this.yieldReturn(match) : false;
+                },
+                Functions.Blank);
+        });
+    };
+
+    // Overload:function(start, count)
+    // Overload:function(start, count, step)
+    Enumerable.range = function (start, count, step) {
+        if (step == null) step = 1;
+
+        return new Enumerable(function () {
+            var value;
+            var index = 0;
+
+            return new IEnumerator(
+                function () { value = start - step; },
+                function () {
+                    return (index++ < count)
+                        ? this.yieldReturn(value += step)
+                        : this.yieldBreak();
+                },
+                Functions.Blank);
+        });
+    };
+
+    // Overload:function(start, count)
+    // Overload:function(start, count, step)
+    Enumerable.rangeDown = function (start, count, step) {
+        if (step == null) step = 1;
+
+        return new Enumerable(function () {
+            var value;
+            var index = 0;
+
+            return new IEnumerator(
+                function () { value = start + step; },
+                function () {
+                    return (index++ < count)
+                        ? this.yieldReturn(value -= step)
+                        : this.yieldBreak();
+                },
+                Functions.Blank);
+        });
+    };
+
+    // Overload:function(start, to)
+    // Overload:function(start, to, step)
+    Enumerable.rangeTo = function (start, to, step) {
+        if (step == null) step = 1;
+
+        if (start < to) {
+            return new Enumerable(function () {
+                var value;
+
+                return new IEnumerator(
+                function () { value = start - step; },
+                function () {
+                    var next = value += step;
+                    return (next <= to)
+                        ? this.yieldReturn(next)
+                        : this.yieldBreak();
+                },
+                Functions.Blank);
+            });
+        }
+        else {
+            return new Enumerable(function () {
+                var value;
+
+                return new IEnumerator(
+                function () { value = start + step; },
+                function () {
+                    var next = value -= step;
+                    return (next >= to)
+                        ? this.yieldReturn(next)
+                        : this.yieldBreak();
+                },
+                Functions.Blank);
+            });
+        }
+    };
+
+    // Overload:function(element)
+    // Overload:function(element, count)
+    Enumerable.repeat = function (element, count) {
+        if (count != null) return Enumerable.repeat(element).take(count);
+
+        return new Enumerable(function () {
+            return new IEnumerator(
+                Functions.Blank,
+                function () { return this.yieldReturn(element); },
+                Functions.Blank);
+        });
+    };
+
+    Enumerable.repeatWithFinalize = function (initializer, finalizer) {
+        initializer = Utils.createLambda(initializer);
+        finalizer = Utils.createLambda(finalizer);
+
+        return new Enumerable(function () {
+            var element;
+            return new IEnumerator(
+                function () { element = initializer(); },
+                function () { return this.yieldReturn(element); },
+                function () {
+                    if (element != null) {
+                        finalizer(element);
+                        element = null;
+                    }
+                });
+        });
+    };
+
+    // Overload:function(func)
+    // Overload:function(func, count)
+    Enumerable.generate = function (func, count) {
+        if (count != null) return Enumerable.generate(func).take(count);
+        func = Utils.createLambda(func);
+
+        return new Enumerable(function () {
+            return new IEnumerator(
+                Functions.Blank,
+                function () { return this.yieldReturn(func()); },
+                Functions.Blank);
+        });
+    };
+
+    // Overload:function()
+    // Overload:function(start)
+    // Overload:function(start, step)
+    Enumerable.toInfinity = function (start, step) {
+        if (start == null) start = 0;
+        if (step == null) step = 1;
+
+        return new Enumerable(function () {
+            var value;
+            return new IEnumerator(
+                function () { value = start - step; },
+                function () { return this.yieldReturn(value += step); },
+                Functions.Blank);
+        });
+    };
+
+    // Overload:function()
+    // Overload:function(start)
+    // Overload:function(start, step)
+    Enumerable.toNegativeInfinity = function (start, step) {
+        if (start == null) start = 0;
+        if (step == null) step = 1;
+
+        return new Enumerable(function () {
+            var value;
+            return new IEnumerator(
+                function () { value = start + step; },
+                function () { return this.yieldReturn(value -= step); },
+                Functions.Blank);
+        });
+    };
+
+    Enumerable.unfold = function (seed, func) {
+        func = Utils.createLambda(func);
+
+        return new Enumerable(function () {
+            var isFirst = true;
+            var value;
+            return new IEnumerator(
+                Functions.Blank,
+                function () {
+                    if (isFirst) {
+                        isFirst = false;
+                        value = seed;
+                        return this.yieldReturn(value);
+                    }
+                    value = func(value);
+                    return this.yieldReturn(value);
+                },
+                Functions.Blank);
+        });
+    };
+
+    Enumerable.defer = function (enumerableFactory) {
+
+        return new Enumerable(function () {
+            var enumerator;
+
+            return new IEnumerator(
+                function () { enumerator = Enumerable.from(enumerableFactory()).getEnumerator(); },
+                function () {
+                    return (enumerator.moveNext())
+                        ? this.yieldReturn(enumerator.current())
+                        : this.yieldBreak();
+                },
+                function () {
+                    Utils.dispose(enumerator);
+                });
+        });
+    };
+
+    // Extension Methods
+
+    /* Projection and Filtering Methods */
+
+    // Overload:function(func)
+    // Overload:function(func, resultSelector<element>)
+    // Overload:function(func, resultSelector<element, nestLevel>)
+    Enumerable.prototype.traverseBreadthFirst = function (func, resultSelector) {
+        var source = this;
+        func = Utils.createLambda(func);
+        resultSelector = Utils.createLambda(resultSelector);
+
+        return new Enumerable(function () {
+            var enumerator;
+            var nestLevel = 0;
+            var buffer = [];
+
+            return new IEnumerator(
+                function () { enumerator = source.getEnumerator(); },
+                function () {
+                    while (true) {
+                        if (enumerator.moveNext()) {
+                            buffer.push(enumerator.current());
+                            return this.yieldReturn(resultSelector(enumerator.current(), nestLevel));
+                        }
+
+                        var next = Enumerable.from(buffer).selectMany(function (x) { return func(x); });
+                        if (!next.any()) {
+                            return false;
+                        }
+                        else {
+                            nestLevel++;
+                            buffer = [];
+                            Utils.dispose(enumerator);
+                            enumerator = next.getEnumerator();
+                        }
+                    }
+                },
+                function () { Utils.dispose(enumerator); });
+        });
+    };
+
+    // Overload:function(func)
+    // Overload:function(func, resultSelector<element>)
+    // Overload:function(func, resultSelector<element, nestLevel>)
+    Enumerable.prototype.traverseDepthFirst = function (func, resultSelector) {
+        var source = this;
+        func = Utils.createLambda(func);
+        resultSelector = Utils.createLambda(resultSelector);
+
+        return new Enumerable(function () {
+            var enumeratorStack = [];
+            var enumerator;
+
+            return new IEnumerator(
+                function () { enumerator = source.getEnumerator(); },
+                function () {
+                    while (true) {
+                        if (enumerator.moveNext()) {
+                            var value = resultSelector(enumerator.current(), enumeratorStack.length);
+                            enumeratorStack.push(enumerator);
+                            enumerator = Enumerable.from(func(enumerator.current())).getEnumerator();
+                            return this.yieldReturn(value);
+                        }
+
+                        if (enumeratorStack.length <= 0) return false;
+                        Utils.dispose(enumerator);
+                        enumerator = enumeratorStack.pop();
+                    }
+                },
+                function () {
+                    try {
+                        Utils.dispose(enumerator);
+                    }
+                    finally {
+                        Enumerable.from(enumeratorStack).forEach(function (s) { s.dispose(); });
+                    }
+                });
+        });
+    };
+
+    Enumerable.prototype.flatten = function () {
+        var source = this;
+
+        return new Enumerable(function () {
+            var enumerator;
+            var middleEnumerator = null;
+
+            return new IEnumerator(
+                function () { enumerator = source.getEnumerator(); },
+                function () {
+                    while (true) {
+                        if (middleEnumerator != null) {
+                            if (middleEnumerator.moveNext()) {
+                                return this.yieldReturn(middleEnumerator.current());
+                            }
+                            else {
+                                middleEnumerator = null;
+                            }
+                        }
+
+                        if (enumerator.moveNext()) {
+                            if (enumerator.current() instanceof Array) {
+                                Utils.dispose(middleEnumerator);
+                                middleEnumerator = Enumerable.from(enumerator.current())
+                                    .selectMany(Functions.Identity)
+                                    .flatten()
+                                    .getEnumerator();
+                                continue;
+                            }
+                            else {
+                                return this.yieldReturn(enumerator.current());
+                            }
+                        }
+
+                        return false;
+                    }
+                },
+                function () {
+                    try {
+                        Utils.dispose(enumerator);
+                    }
+                    finally {
+                        Utils.dispose(middleEnumerator);
+                    }
+                });
+        });
+    };
+
+    Enumerable.prototype.pairwise = function (selector) {
+        var source = this;
+        selector = Utils.createLambda(selector);
+
+        return new Enumerable(function () {
+            var enumerator;
+
+            return new IEnumerator(
+                function () {
+                    enumerator = source.getEnumerator();
+                    enumerator.moveNext();
+                },
+                function () {
+                    var prev = enumerator.current();
+                    return (enumerator.moveNext())
+                        ? this.yieldReturn(selector(prev, enumerator.current()))
+                        : false;
+                },
+                function () { Utils.dispose(enumerator); });
+        });
+    };
+
+    // Overload:function(func)
+    // Overload:function(seed,func<value,element>)
+    Enumerable.prototype.scan = function (seed, func) {
+        var isUseSeed;
+        if (func == null) {
+            func = Utils.createLambda(seed); // arguments[0]
+            isUseSeed = false;
+        } else {
+            func = Utils.createLambda(func);
+            isUseSeed = true;
+        }
+        var source = this;
+
+        return new Enumerable(function () {
+            var enumerator;
+            var value;
+            var isFirst = true;
+
+            return new IEnumerator(
+                function () { enumerator = source.getEnumerator(); },
+                function () {
+                    if (isFirst) {
+                        isFirst = false;
+                        if (!isUseSeed) {
+                            if (enumerator.moveNext()) {
+                                return this.yieldReturn(value = enumerator.current());
+                            }
+                        }
+                        else {
+                            return this.yieldReturn(value = seed);
+                        }
+                    }
+
+                    return (enumerator.moveNext())
+                        ? this.yieldReturn(value = func(value, enumerator.current()))
+                        : false;
+                },
+                function () { Utils.dispose(enumerator); });
+        });
+    };
+
+    // Overload:function(selector<element>)
+    // Overload:function(selector<element,index>)
+    Enumerable.prototype.select = function (selector) {
+        selector = Utils.createLambda(selector);
+
+        if (selector.length <= 1) {
+            return new WhereSelectEnumerable(this, null, selector);
+        }
+        else {
+            var source = this;
+
+            return new Enumerable(function () {
+                var enumerator;
+                var index = 0;
+
+                return new IEnumerator(
+                    function () { enumerator = source.getEnumerator(); },
+                    function () {
+                        return (enumerator.moveNext())
+                            ? this.yieldReturn(selector(enumerator.current(), index++))
+                            : false;
+                    },
+                    function () { Utils.dispose(enumerator); });
+            });
+        }
+    };
+
+    // Overload:function(collectionSelector<element>)
+    // Overload:function(collectionSelector<element,index>)
+    // Overload:function(collectionSelector<element>,resultSelector)
+    // Overload:function(collectionSelector<element,index>,resultSelector)
+    Enumerable.prototype.selectMany = function (collectionSelector, resultSelector) {
+        var source = this;
+        collectionSelector = Utils.createLambda(collectionSelector);
+        if (resultSelector == null) resultSelector = function (a, b) { return b; };
+        resultSelector = Utils.createLambda(resultSelector);
+
+        return new Enumerable(function () {
+            var enumerator;
+            var middleEnumerator = undefined;
+            var index = 0;
+
+            return new IEnumerator(
+                function () { enumerator = source.getEnumerator(); },
+                function () {
+                    if (middleEnumerator === undefined) {
+                        if (!enumerator.moveNext()) return false;
+                    }
+                    do {
+                        if (middleEnumerator == null) {
+                            var middleSeq = collectionSelector(enumerator.current(), index++);
+                            middleEnumerator = Enumerable.from(middleSeq).getEnumerator();
+                        }
+                        if (middleEnumerator.moveNext()) {
+                            return this.yieldReturn(resultSelector(enumerator.current(), middleEnumerator.current()));
+                        }
+                        Utils.dispose(middleEnumerator);
+                        middleEnumerator = null;
+                    } while (enumerator.moveNext());
+                    return false;
+                },
+                function () {
+                    try {
+                        Utils.dispose(enumerator);
+                    }
+                    finally {
+                        Utils.dispose(middleEnumerator);
+                    }
+                });
+        });
+    };
+
+    // Overload:function(predicate<element>)
+    // Overload:function(predicate<element,index>)
+    Enumerable.prototype.where = function (predicate) {
+        predicate = Utils.createLambda(predicate);
+
+        if (predicate.length <= 1) {
+            return new WhereEnumerable(this, predicate);
+        }
+        else {
+            var source = this;
+
+            return new Enumerable(function () {
+                var enumerator;
+                var index = 0;
+
+                return new IEnumerator(
+                    function () { enumerator = source.getEnumerator(); },
+                    function () {
+                        while (enumerator.moveNext()) {
+                            if (predicate(enumerator.current(), index++)) {
+                                return this.yieldReturn(enumerator.current());
+                            }
+                        }
+                        return false;
+                    },
+                    function () { Utils.dispose(enumerator); });
+            });
+        }
+    };
+
+
+    // Overload:function(selector<element>)
+    // Overload:function(selector<element,index>)
+    Enumerable.prototype.choose = function (selector) {
+        selector = Utils.createLambda(selector);
+        var source = this;
+
+        return new Enumerable(function () {
+            var enumerator;
+            var index = 0;
+
+            return new IEnumerator(
+                function () { enumerator = source.getEnumerator(); },
+                function () {
+                    while (enumerator.moveNext()) {
+                        var result = selector(enumerator.current(), index++);
+                        if (result != null) {
+                            return this.yieldReturn(result);
+                        }
+                    }
+                    return this.yieldBreak();
+                },
+                function () { Utils.dispose(enumerator); });
+        });
+    };
+
+    Enumerable.prototype.ofType = function (type) {
+        var typeName;
+        switch (type) {
+            case Number:
+                typeName = Types.Number;
+                break;
+            case String:
+                typeName = Types.String;
+                break;
+            case Boolean:
+                typeName = Types.Boolean;
+                break;
+            case Function:
+                typeName = Types.Function;
+                break;
+            default:
+                typeName = null;
+                break;
+        }
+        return (typeName === null)
+            ? this.where(function (x) { return x instanceof type; })
+            : this.where(function (x) { return typeof x === typeName; });
+    };
+
+    // mutiple arguments, last one is selector, others are enumerable
+    Enumerable.prototype.zip = function () {
+        var args = arguments;
+        var selector = Utils.createLambda(arguments[arguments.length - 1]);
+
+        var source = this;
+        // optimized case:argument is 2
+        if (arguments.length == 2) {
+            var second = arguments[0];
+
+            return new Enumerable(function () {
+                var firstEnumerator;
+                var secondEnumerator;
+                var index = 0;
+
+                return new IEnumerator(
+                function () {
+                    firstEnumerator = source.getEnumerator();
+                    secondEnumerator = Enumerable.from(second).getEnumerator();
+                },
+                function () {
+                    if (firstEnumerator.moveNext() && secondEnumerator.moveNext()) {
+                        return this.yieldReturn(selector(firstEnumerator.current(), secondEnumerator.current(), index++));
+                    }
+                    return false;
+                },
+                function () {
+                    try {
+                        Utils.dispose(firstEnumerator);
+                    } finally {
+                        Utils.dispose(secondEnumerator);
+                    }
+                });
+            });
+        }
+        else {
+            return new Enumerable(function () {
+                var enumerators;
+                var index = 0;
+
+                return new IEnumerator(
+                function () {
+                    var array = Enumerable.make(source)
+                        .concat(Enumerable.from(args).takeExceptLast().select(Enumerable.from))
+                        .select(function (x) { return x.getEnumerator() })
+                        .toArray();
+                    enumerators = Enumerable.from(array);
+                },
+                function () {
+                    if (enumerators.all(function (x) { return x.moveNext() })) {
+                        var array = enumerators
+                            .select(function (x) { return x.current() })
+                            .toArray();
+                        array.push(index++);
+                        return this.yieldReturn(selector.apply(null, array));
+                    }
+                    else {
+                        return this.yieldBreak();
+                    }
+                },
+                function () {
+                    Enumerable.from(enumerators).forEach(Utils.dispose);
+                });
+            });
+        }
+    };
+
+    // mutiple arguments
+    Enumerable.prototype.merge = function () {
+        var args = arguments;
+        var source = this;
+
+        return new Enumerable(function () {
+            var enumerators;
+            var index = -1;
+
+            return new IEnumerator(
+                function () {
+                    enumerators = Enumerable.make(source)
+                        .concat(Enumerable.from(args).select(Enumerable.from))
+                        .select(function (x) { return x.getEnumerator() })
+                        .toArray();
+                },
+                function () {
+                    while (enumerators.length > 0) {
+                        index = (index >= enumerators.length - 1) ? 0 : index + 1;
+                        var enumerator = enumerators[index];
+
+                        if (enumerator.moveNext()) {
+                            return this.yieldReturn(enumerator.current());
+                        }
+                        else {
+                            enumerator.dispose();
+                            enumerators.splice(index--, 1);
+                        }
+                    }
+                    return this.yieldBreak();
+                },
+                function () {
+                    Enumerable.from(enumerators).forEach(Utils.dispose);
+                });
+        });
+    };
+
+    /* Join Methods */
+
+    // Overload:function (inner, outerKeySelector, innerKeySelector, resultSelector)
+    // Overload:function (inner, outerKeySelector, innerKeySelector, resultSelector, compareSelector)
+    Enumerable.prototype.join = function (inner, outerKeySelector, innerKeySelector, resultSelector, compareSelector) {
+        outerKeySelector = Utils.createLambda(outerKeySelector);
+        innerKeySelector = Utils.createLambda(innerKeySelector);
+        resultSelector = Utils.createLambda(resultSelector);
+        compareSelector = Utils.createLambda(compareSelector);
+        var source = this;
+
+        return new Enumerable(function () {
+            var outerEnumerator;
+            var lookup;
+            var innerElements = null;
+            var innerCount = 0;
+
+            return new IEnumerator(
+                function () {
+                    outerEnumerator = source.getEnumerator();
+                    lookup = Enumerable.from(inner).toLookup(innerKeySelector, Functions.Identity, compareSelector);
+                },
+                function () {
+                    while (true) {
+                        if (innerElements != null) {
+                            var innerElement = innerElements[innerCount++];
+                            if (innerElement !== undefined) {
+                                return this.yieldReturn(resultSelector(outerEnumerator.current(), innerElement));
+                            }
+
+                            innerElement = null;
+                            innerCount = 0;
+                        }
+
+                        if (outerEnumerator.moveNext()) {
+                            var key = outerKeySelector(outerEnumerator.current());
+                            innerElements = lookup.get(key).toArray();
+                        } else {
+                            return false;
+                        }
+                    }
+                },
+                function () { Utils.dispose(outerEnumerator); });
+        });
+    };
+
+    // Overload:function (inner, outerKeySelector, innerKeySelector, resultSelector)
+    // Overload:function (inner, outerKeySelector, innerKeySelector, resultSelector, compareSelector)
+    Enumerable.prototype.groupJoin = function (inner, outerKeySelector, innerKeySelector, resultSelector, compareSelector) {
+        outerKeySelector = Utils.createLambda(outerKeySelector);
+        innerKeySelector = Utils.createLambda(innerKeySelector);
+        resultSelector = Utils.createLambda(resultSelector);
+        compareSelector = Utils.createLambda(compareSelector);
+        var source = this;
+
+        return new Enumerable(function () {
+            var enumerator = source.getEnumerator();
+            var lookup = null;
+
+            return new IEnumerator(
+                function () {
+                    enumerator = source.getEnumerator();
+                    lookup = Enumerable.from(inner).toLookup(innerKeySelector, Functions.Identity, compareSelector);
+                },
+                function () {
+                    if (enumerator.moveNext()) {
+                        var innerElement = lookup.get(outerKeySelector(enumerator.current()));
+                        return this.yieldReturn(resultSelector(enumerator.current(), innerElement));
+                    }
+                    return false;
+                },
+                function () { Utils.dispose(enumerator); });
+        });
+    };
+
+    /* Set Methods */
+
+    Enumerable.prototype.all = function (predicate) {
+        predicate = Utils.createLambda(predicate);
+
+        var result = true;
+        this.forEach(function (x) {
+            if (!predicate(x)) {
+                result = false;
+                return false; // break
+            }
+        });
+        return result;
+    };
+
+    // Overload:function()
+    // Overload:function(predicate)
+    Enumerable.prototype.any = function (predicate) {
+        predicate = Utils.createLambda(predicate);
+
+        var enumerator = this.getEnumerator();
+        try {
+            if (arguments.length == 0) return enumerator.moveNext(); // case:function()
+
+            while (enumerator.moveNext()) // case:function(predicate)
+            {
+                if (predicate(enumerator.current())) return true;
+            }
+            return false;
+        }
+        finally {
+            Utils.dispose(enumerator);
+        }
+    };
+
+    Enumerable.prototype.isEmpty = function () {
+        return !this.any();
+    };
+
+    // multiple arguments
+    Enumerable.prototype.concat = function () {
+        var source = this;
+
+        if (arguments.length == 1) {
+            var second = arguments[0];
+
+            return new Enumerable(function () {
+                var firstEnumerator;
+                var secondEnumerator;
+
+                return new IEnumerator(
+                function () { firstEnumerator = source.getEnumerator(); },
+                function () {
+                    if (secondEnumerator == null) {
+                        if (firstEnumerator.moveNext()) return this.yieldReturn(firstEnumerator.current());
+                        secondEnumerator = Enumerable.from(second).getEnumerator();
+                    }
+                    if (secondEnumerator.moveNext()) return this.yieldReturn(secondEnumerator.current());
+                    return false;
+                },
+                function () {
+                    try {
+                        Utils.dispose(firstEnumerator);
+                    }
+                    finally {
+                        Utils.dispose(secondEnumerator);
+                    }
+                });
+            });
+        }
+        else {
+            var args = arguments;
+
+            return new Enumerable(function () {
+                var enumerators;
+
+                return new IEnumerator(
+                    function () {
+                        enumerators = Enumerable.make(source)
+                            .concat(Enumerable.from(args).select(Enumerable.from))
+                            .select(function (x) { return x.getEnumerator() })
+                            .toArray();
+                    },
+                    function () {
+                        while (enumerators.length > 0) {
+                            var enumerator = enumerators[0];
+
+                            if (enumerator.moveNext()) {
+                                return this.yieldReturn(enumerator.current());
+                            }
+                            else {
+                                enumerator.dispose();
+                                enumerators.splice(0, 1);
+                            }
+                        }
+                        return this.yieldBreak();
+                    },
+                    function () {
+                        Enumerable.from(enumerators).forEach(Utils.dispose);
+                    });
+            });
+        }
+    };
+
+    Enumerable.prototype.insert = function (index, second) {
+        var source = this;
+
+        return new Enumerable(function () {
+            var firstEnumerator;
+            var secondEnumerator;
+            var count = 0;
+            var isEnumerated = false;
+
+            return new IEnumerator(
+                function () {
+                    firstEnumerator = source.getEnumerator();
+                    secondEnumerator = Enumerable.from(second).getEnumerator();
+                },
+                function () {
+                    if (count == index && secondEnumerator.moveNext()) {
+                        isEnumerated = true;
+                        return this.yieldReturn(secondEnumerator.current());
+                    }
+                    if (firstEnumerator.moveNext()) {
+                        count++;
+                        return this.yieldReturn(firstEnumerator.current());
+                    }
+                    if (!isEnumerated && secondEnumerator.moveNext()) {
+                        return this.yieldReturn(secondEnumerator.current());
+                    }
+                    return false;
+                },
+                function () {
+                    try {
+                        Utils.dispose(firstEnumerator);
+                    }
+                    finally {
+                        Utils.dispose(secondEnumerator);
+                    }
+                });
+        });
+    };
+
+    Enumerable.prototype.alternate = function (alternateValueOrSequence) {
+        var source = this;
+
+        return new Enumerable(function () {
+            var buffer;
+            var enumerator;
+            var alternateSequence;
+            var alternateEnumerator;
+
+            return new IEnumerator(
+                function () {
+                    if (alternateValueOrSequence instanceof Array || alternateValueOrSequence.getEnumerator != null) {
+                        alternateSequence = Enumerable.from(Enumerable.from(alternateValueOrSequence).toArray()); // freeze
+                    }
+                    else {
+                        alternateSequence = Enumerable.make(alternateValueOrSequence);
+                    }
+                    enumerator = source.getEnumerator();
+                    if (enumerator.moveNext()) buffer = enumerator.current();
+                },
+                function () {
+                    while (true) {
+                        if (alternateEnumerator != null) {
+                            if (alternateEnumerator.moveNext()) {
+                                return this.yieldReturn(alternateEnumerator.current());
+                            }
+                            else {
+                                alternateEnumerator = null;
+                            }
+                        }
+
+                        if (buffer == null && enumerator.moveNext()) {
+                            buffer = enumerator.current(); // hasNext
+                            alternateEnumerator = alternateSequence.getEnumerator();
+                            continue; // GOTO
+                        }
+                        else if (buffer != null) {
+                            var retVal = buffer;
+                            buffer = null;
+                            return this.yieldReturn(retVal);
+                        }
+
+                        return this.yieldBreak();
+                    }
+                },
+                function () {
+                    try {
+                        Utils.dispose(enumerator);
+                    }
+                    finally {
+                        Utils.dispose(alternateEnumerator);
+                    }
+                });
+        });
+    };
+
+    // Overload:function(value)
+    // Overload:function(value, compareSelector)
+    Enumerable.prototype.contains = function (value, compareSelector) {
+        compareSelector = Utils.createLambda(compareSelector);
+        var enumerator = this.getEnumerator();
+        try {
+            while (enumerator.moveNext()) {
+                if (compareSelector(enumerator.current()) === value) return true;
+            }
+            return false;
+        }
+        finally {
+            Utils.dispose(enumerator);
+        }
+    };
+
+    Enumerable.prototype.defaultIfEmpty = function (defaultValue) {
+        var source = this;
+        if (defaultValue === undefined) defaultValue = null;
+
+        return new Enumerable(function () {
+            var enumerator;
+            var isFirst = true;
+
+            return new IEnumerator(
+                function () { enumerator = source.getEnumerator(); },
+                function () {
+                    if (enumerator.moveNext()) {
+                        isFirst = false;
+                        return this.yieldReturn(enumerator.current());
+                    }
+                    else if (isFirst) {
+                        isFirst = false;
+                        return this.yieldReturn(defaultValue);
+                    }
+                    return false;
+                },
+                function () { Utils.dispose(enumerator); });
+        });
+    };
+
+    // Overload:function()
+    // Overload:function(compareSelector)
+    Enumerable.prototype.distinct = function (compareSelector) {
+        return this.except(Enumerable.empty(), compareSelector);
+    };
+
+    Enumerable.prototype.distinctUntilChanged = function (compareSelector) {
+        compareSelector = Utils.createLambda(compareSelector);
+        var source = this;
+
+        return new Enumerable(function () {
+            var enumerator;
+            var compareKey;
+            var initial;
+
+            return new IEnumerator(
+                function () {
+                    enumerator = source.getEnumerator();
+                },
+                function () {
+                    while (enumerator.moveNext()) {
+                        var key = compareSelector(enumerator.current());
+
+                        if (initial) {
+                            initial = false;
+                            compareKey = key;
+                            return this.yieldReturn(enumerator.current());
+                        }
+
+                        if (compareKey === key) {
+                            continue;
+                        }
+
+                        compareKey = key;
+                        return this.yieldReturn(enumerator.current());
+                    }
+                    return this.yieldBreak();
+                },
+                function () { Utils.dispose(enumerator); });
+        });
+    };
+
+    // Overload:function(second)
+    // Overload:function(second, compareSelector)
+    Enumerable.prototype.except = function (second, compareSelector) {
+        compareSelector = Utils.createLambda(compareSelector);
+        var source = this;
+
+        return new Enumerable(function () {
+            var enumerator;
+            var keys;
+
+            return new IEnumerator(
+                function () {
+                    enumerator = source.getEnumerator();
+                    keys = new Dictionary(compareSelector);
+                    Enumerable.from(second).forEach(function (key) { keys.add(key); });
+                },
+                function () {
+                    while (enumerator.moveNext()) {
+                        var current = enumerator.current();
+                        if (!keys.contains(current)) {
+                            keys.add(current);
+                            return this.yieldReturn(current);
+                        }
+                    }
+                    return false;
+                },
+                function () { Utils.dispose(enumerator); });
+        });
+    };
+
+    // Overload:function(second)
+    // Overload:function(second, compareSelector)
+    Enumerable.prototype.intersect = function (second, compareSelector) {
+        compareSelector = Utils.createLambda(compareSelector);
+        var source = this;
+
+        return new Enumerable(function () {
+            var enumerator;
+            var keys;
+            var outs;
+
+            return new IEnumerator(
+                function () {
+                    enumerator = source.getEnumerator();
+
+                    keys = new Dictionary(compareSelector);
+                    Enumerable.from(second).forEach(function (key) { keys.add(key); });
+                    outs = new Dictionary(compareSelector);
+                },
+                function () {
+                    while (enumerator.moveNext()) {
+                        var current = enumerator.current();
+                        if (!outs.contains(current) && keys.contains(current)) {
+                            outs.add(current);
+                            return this.yieldReturn(current);
+                        }
+                    }
+                    return false;
+                },
+                function () { Utils.dispose(enumerator); });
+        });
+    };
+
+    // Overload:function(second)
+    // Overload:function(second, compareSelector)
+    Enumerable.prototype.sequenceEqual = function (second, compareSelector) {
+        compareSelector = Utils.createLambda(compareSelector);
+
+        var firstEnumerator = this.getEnumerator();
+        try {
+            var secondEnumerator = Enumerable.from(second).getEnumerator();
+            try {
+                while (firstEnumerator.moveNext()) {
+                    if (!secondEnumerator.moveNext()
+                    || compareSelector(firstEnumerator.current()) !== compareSelector(secondEnumerator.current())) {
+                        return false;
+                    }
+                }
+
+                if (secondEnumerator.moveNext()) return false;
+                return true;
+            }
+            finally {
+                Utils.dispose(secondEnumerator);
+            }
+        }
+        finally {
+            Utils.dispose(firstEnumerator);
+        }
+    };
+
+    Enumerable.prototype.union = function (second, compareSelector) {
+        compareSelector = Utils.createLambda(compareSelector);
+        var source = this;
+
+        return new Enumerable(function () {
+            var firstEnumerator;
+            var secondEnumerator;
+            var keys;
+
+            return new IEnumerator(
+                function () {
+                    firstEnumerator = source.getEnumerator();
+                    keys = new Dictionary(compareSelector);
+                },
+                function () {
+                    var current;
+                    if (secondEnumerator === undefined) {
+                        while (firstEnumerator.moveNext()) {
+                            current = firstEnumerator.current();
+                            if (!keys.contains(current)) {
+                                keys.add(current);
+                                return this.yieldReturn(current);
+                            }
+                        }
+                        secondEnumerator = Enumerable.from(second).getEnumerator();
+                    }
+                    while (secondEnumerator.moveNext()) {
+                        current = secondEnumerator.current();
+                        if (!keys.contains(current)) {
+                            keys.add(current);
+                            return this.yieldReturn(current);
+                        }
+                    }
+                    return false;
+                },
+                function () {
+                    try {
+                        Utils.dispose(firstEnumerator);
+                    }
+                    finally {
+                        Utils.dispose(secondEnumerator);
+                    }
+                });
+        });
+    };
+
+    /* Ordering Methods */
+
+    Enumerable.prototype.orderBy = function (keySelector) {
+        return new OrderedEnumerable(this, keySelector, false);
+    };
+
+    Enumerable.prototype.orderByDescending = function (keySelector) {
+        return new OrderedEnumerable(this, keySelector, true);
+    };
+
+    Enumerable.prototype.reverse = function () {
+        var source = this;
+
+        return new Enumerable(function () {
+            var buffer;
+            var index;
+
+            return new IEnumerator(
+                function () {
+                    buffer = source.toArray();
+                    index = buffer.length;
+                },
+                function () {
+                    return (index > 0)
+                        ? this.yieldReturn(buffer[--index])
+                        : false;
+                },
+                Functions.Blank);
+        });
+    };
+
+    Enumerable.prototype.shuffle = function () {
+        var source = this;
+
+        return new Enumerable(function () {
+            var buffer;
+
+            return new IEnumerator(
+                function () { buffer = source.toArray(); },
+                function () {
+                    if (buffer.length > 0) {
+                        var i = Math.floor(Math.random() * buffer.length);
+                        return this.yieldReturn(buffer.splice(i, 1)[0]);
+                    }
+                    return false;
+                },
+                Functions.Blank);
+        });
+    };
+
+    Enumerable.prototype.weightedSample = function (weightSelector) {
+        weightSelector = Utils.createLambda(weightSelector);
+        var source = this;
+
+        return new Enumerable(function () {
+            var sortedByBound;
+            var totalWeight = 0;
+
+            return new IEnumerator(
+                function () {
+                    sortedByBound = source
+                        .choose(function (x) {
+                            var weight = weightSelector(x);
+                            if (weight <= 0) return null; // ignore 0
+
+                            totalWeight += weight;
+                            return { value: x, bound: totalWeight };
+                        })
+                        .toArray();
+                },
+                function () {
+                    if (sortedByBound.length > 0) {
+                        var draw = Math.floor(Math.random() * totalWeight) + 1;
+
+                        var lower = -1;
+                        var upper = sortedByBound.length;
+                        while (upper - lower > 1) {
+                            var index = Math.floor((lower + upper) / 2);
+                            if (sortedByBound[index].bound >= draw) {
+                                upper = index;
+                            }
+                            else {
+                                lower = index;
+                            }
+                        }
+
+                        return this.yieldReturn(sortedByBound[upper].value);
+                    }
+
+                    return this.yieldBreak();
+                },
+                Functions.Blank);
+        });
+    };
+
+    /* Grouping Methods */
+
+    // Overload:function(keySelector)
+    // Overload:function(keySelector,elementSelector)
+    // Overload:function(keySelector,elementSelector,resultSelector)
+    // Overload:function(keySelector,elementSelector,resultSelector,compareSelector)
+    Enumerable.prototype.groupBy = function (keySelector, elementSelector, resultSelector, compareSelector) {
+        var source = this;
+        keySelector = Utils.createLambda(keySelector);
+        elementSelector = Utils.createLambda(elementSelector);
+        if (resultSelector != null) resultSelector = Utils.createLambda(resultSelector);
+        compareSelector = Utils.createLambda(compareSelector);
+
+        return new Enumerable(function () {
+            var enumerator;
+
+            return new IEnumerator(
+                function () {
+                    enumerator = source.toLookup(keySelector, elementSelector, compareSelector)
+                        .toEnumerable()
+                        .getEnumerator();
+                },
+                function () {
+                    while (enumerator.moveNext()) {
+                        return (resultSelector == null)
+                            ? this.yieldReturn(enumerator.current())
+                            : this.yieldReturn(resultSelector(enumerator.current().key(), enumerator.current()));
+                    }
+                    return false;
+                },
+                function () { Utils.dispose(enumerator); });
+        });
+    };
+
+    // Overload:function(keySelector)
+    // Overload:function(keySelector,elementSelector)
+    // Overload:function(keySelector,elementSelector,resultSelector)
+    // Overload:function(keySelector,elementSelector,resultSelector,compareSelector)
+    Enumerable.prototype.partitionBy = function (keySelector, elementSelector, resultSelector, compareSelector) {
+
+        var source = this;
+        keySelector = Utils.createLambda(keySelector);
+        elementSelector = Utils.createLambda(elementSelector);
+        compareSelector = Utils.createLambda(compareSelector);
+        var hasResultSelector;
+        if (resultSelector == null) {
+            hasResultSelector = false;
+            resultSelector = function (key, group) { return new Grouping(key, group); };
+        }
+        else {
+            hasResultSelector = true;
+            resultSelector = Utils.createLambda(resultSelector);
+        }
+
+        return new Enumerable(function () {
+            var enumerator;
+            var key;
+            var compareKey;
+            var group = [];
+
+            return new IEnumerator(
+                function () {
+                    enumerator = source.getEnumerator();
+                    if (enumerator.moveNext()) {
+                        key = keySelector(enumerator.current());
+                        compareKey = compareSelector(key);
+                        group.push(elementSelector(enumerator.current()));
+                    }
+                },
+                function () {
+                    var hasNext;
+                    while ((hasNext = enumerator.moveNext()) == true) {
+                        if (compareKey === compareSelector(keySelector(enumerator.current()))) {
+                            group.push(elementSelector(enumerator.current()));
+                        }
+                        else break;
+                    }
+
+                    if (group.length > 0) {
+                        var result = (hasResultSelector)
+                            ? resultSelector(key, Enumerable.from(group))
+                            : resultSelector(key, group);
+                        if (hasNext) {
+                            key = keySelector(enumerator.current());
+                            compareKey = compareSelector(key);
+                            group = [elementSelector(enumerator.current())];
+                        }
+                        else group = [];
+
+                        return this.yieldReturn(result);
+                    }
+
+                    return false;
+                },
+                function () { Utils.dispose(enumerator); });
+        });
+    };
+
+    Enumerable.prototype.buffer = function (count) {
+        var source = this;
+
+        return new Enumerable(function () {
+            var enumerator;
+
+            return new IEnumerator(
+                function () { enumerator = source.getEnumerator(); },
+                function () {
+                    var array = [];
+                    var index = 0;
+                    while (enumerator.moveNext()) {
+                        array.push(enumerator.current());
+                        if (++index >= count) return this.yieldReturn(array);
+                    }
+                    if (array.length > 0) return this.yieldReturn(array);
+                    return false;
+                },
+                function () { Utils.dispose(enumerator); });
+        });
+    };
+
+    /* Aggregate Methods */
+
+    // Overload:function(func)
+    // Overload:function(seed,func)
+    // Overload:function(seed,func,resultSelector)
+    Enumerable.prototype.aggregate = function (seed, func, resultSelector) {
+        resultSelector = Utils.createLambda(resultSelector);
+        return resultSelector(this.scan(seed, func, resultSelector).last());
+    };
+
+    // Overload:function()
+    // Overload:function(selector)
+    Enumerable.prototype.average = function (selector) {
+        selector = Utils.createLambda(selector);
+
+        var sum = 0;
+        var count = 0;
+        this.forEach(function (x) {
+            sum += selector(x);
+            ++count;
+        });
+
+        return sum / count;
+    };
+
+    // Overload:function()
+    // Overload:function(predicate)
+    Enumerable.prototype.count = function (predicate) {
+        predicate = (predicate == null) ? Functions.True : Utils.createLambda(predicate);
+
+        var count = 0;
+        this.forEach(function (x, i) {
+            if (predicate(x, i))++count;
+        });
+        return count;
+    };
+
+    // Overload:function()
+    // Overload:function(selector)
+    Enumerable.prototype.max = function (selector) {
+        if (selector == null) selector = Functions.Identity;
+        return this.select(selector).aggregate(function (a, b) { return (a > b) ? a : b; });
+    };
+
+    // Overload:function()
+    // Overload:function(selector)
+    Enumerable.prototype.min = function (selector) {
+        if (selector == null) selector = Functions.Identity;
+        return this.select(selector).aggregate(function (a, b) { return (a < b) ? a : b; });
+    };
+
+    Enumerable.prototype.maxBy = function (keySelector) {
+        keySelector = Utils.createLambda(keySelector);
+        return this.aggregate(function (a, b) { return (keySelector(a) > keySelector(b)) ? a : b; });
+    };
+
+    Enumerable.prototype.minBy = function (keySelector) {
+        keySelector = Utils.createLambda(keySelector);
+        return this.aggregate(function (a, b) { return (keySelector(a) < keySelector(b)) ? a : b; });
+    };
+
+    // Overload:function()
+    // Overload:function(selector)
+    Enumerable.prototype.sum = function (selector) {
+        if (selector == null) selector = Functions.Identity;
+        return this.select(selector).aggregate(0, function (a, b) { return a + b; });
+    };
+
+    /* Paging Methods */
+
+    Enumerable.prototype.elementAt = function (index) {
+        var value;
+        var found = false;
+        this.forEach(function (x, i) {
+            if (i == index) {
+                value = x;
+                found = true;
+                return false;
+            }
+        });
+
+        if (!found) throw new Error("index is less than 0 or greater than or equal to the number of elements in source.");
+        return value;
+    };
+
+    Enumerable.prototype.elementAtOrDefault = function (index, defaultValue) {
+        if (defaultValue === undefined) defaultValue = null;
+        var value;
+        var found = false;
+        this.forEach(function (x, i) {
+            if (i == index) {
+                value = x;
+                found = true;
+                return false;
+            }
+        });
+
+        return (!found) ? defaultValue : value;
+    };
+
+    // Overload:function()
+    // Overload:function(predicate)
+    Enumerable.prototype.first = function (predicate) {
+        if (predicate != null) return this.where(predicate).first();
+
+        var value;
+        var found = false;
+        this.forEach(function (x) {
+            value = x;
+            found = true;
+            return false;
+        });
+
+        if (!found) throw new Error("first:No element satisfies the condition.");
+        return value;
+    };
+
+    Enumerable.prototype.firstOrDefault = function (predicate, defaultValue) {
+        if (defaultValue === undefined) defaultValue = null;
+        if (predicate != null) return this.where(predicate).firstOrDefault(null, defaultValue);
+
+        var value;
+        var found = false;
+        this.forEach(function (x) {
+            value = x;
+            found = true;
+            return false;
+        });
+        return (!found) ? defaultValue : value;
+    };
+
+    // Overload:function()
+    // Overload:function(predicate)
+    Enumerable.prototype.last = function (predicate) {
+        if (predicate != null) return this.where(predicate).last();
+
+        var value;
+        var found = false;
+        this.forEach(function (x) {
+            found = true;
+            value = x;
+        });
+
+        if (!found) throw new Error("last:No element satisfies the condition.");
+        return value;
+    };
+
+    // Overload:function(defaultValue)
+    // Overload:function(defaultValue,predicate)
+    Enumerable.prototype.lastOrDefault = function (predicate, defaultValue) {
+        if (defaultValue === undefined) defaultValue = null;
+        if (predicate != null) return this.where(predicate).lastOrDefault(null, defaultValue);
+
+        var value;
+        var found = false;
+        this.forEach(function (x) {
+            found = true;
+            value = x;
+        });
+        return (!found) ? defaultValue : value;
+    };
+
+    // Overload:function()
+    // Overload:function(predicate)
+    Enumerable.prototype.single = function (predicate) {
+        if (predicate != null) return this.where(predicate).single();
+
+        var value;
+        var found = false;
+        this.forEach(function (x) {
+            if (!found) {
+                found = true;
+                value = x;
+            } else throw new Error("single:sequence contains more than one element.");
+        });
+
+        if (!found) throw new Error("single:No element satisfies the condition.");
+        return value;
+    };
+
+    // Overload:function(defaultValue)
+    // Overload:function(defaultValue,predicate)
+    Enumerable.prototype.singleOrDefault = function (predicate, defaultValue) {
+        if (defaultValue === undefined) defaultValue = null;
+        if (predicate != null) return this.where(predicate).singleOrDefault(null, defaultValue);
+
+        var value;
+        var found = false;
+        this.forEach(function (x) {
+            if (!found) {
+                found = true;
+                value = x;
+            } else throw new Error("single:sequence contains more than one element.");
+        });
+
+        return (!found) ? defaultValue : value;
+    };
+
+    Enumerable.prototype.skip = function (count) {
+        var source = this;
+
+        return new Enumerable(function () {
+            var enumerator;
+            var index = 0;
+
+            return new IEnumerator(
+                function () {
+                    enumerator = source.getEnumerator();
+                    while (index++ < count && enumerator.moveNext()) {
+                    }
+                    ;
+                },
+                function () {
+                    return (enumerator.moveNext())
+                        ? this.yieldReturn(enumerator.current())
+                        : false;
+                },
+                function () { Utils.dispose(enumerator); });
+        });
+    };
+
+    // Overload:function(predicate<element>)
+    // Overload:function(predicate<element,index>)
+    Enumerable.prototype.skipWhile = function (predicate) {
+        predicate = Utils.createLambda(predicate);
+        var source = this;
+
+        return new Enumerable(function () {
+            var enumerator;
+            var index = 0;
+            var isSkipEnd = false;
+
+            return new IEnumerator(
+                function () { enumerator = source.getEnumerator(); },
+                function () {
+                    while (!isSkipEnd) {
+                        if (enumerator.moveNext()) {
+                            if (!predicate(enumerator.current(), index++)) {
+                                isSkipEnd = true;
+                                return this.yieldReturn(enumerator.current());
+                            }
+                            continue;
+                        } else return false;
+                    }
+
+                    return (enumerator.moveNext())
+                        ? this.yieldReturn(enumerator.current())
+                        : false;
+
+                },
+                function () { Utils.dispose(enumerator); });
+        });
+    };
+
+    Enumerable.prototype.take = function (count) {
+        var source = this;
+
+        return new Enumerable(function () {
+            var enumerator;
+            var index = 0;
+
+            return new IEnumerator(
+                function () { enumerator = source.getEnumerator(); },
+                function () {
+                    return (index++ < count && enumerator.moveNext())
+                        ? this.yieldReturn(enumerator.current())
+                        : false;
+                },
+                function () { Utils.dispose(enumerator); }
+            );
+        });
+    };
+
+    // Overload:function(predicate<element>)
+    // Overload:function(predicate<element,index>)
+    Enumerable.prototype.takeWhile = function (predicate) {
+        predicate = Utils.createLambda(predicate);
+        var source = this;
+
+        return new Enumerable(function () {
+            var enumerator;
+            var index = 0;
+
+            return new IEnumerator(
+                function () { enumerator = source.getEnumerator(); },
+                function () {
+                    return (enumerator.moveNext() && predicate(enumerator.current(), index++))
+                        ? this.yieldReturn(enumerator.current())
+                        : false;
+                },
+                function () { Utils.dispose(enumerator); });
+        });
+    };
+
+    // Overload:function()
+    // Overload:function(count)
+    Enumerable.prototype.takeExceptLast = function (count) {
+        if (count == null) count = 1;
+        var source = this;
+
+        return new Enumerable(function () {
+            if (count <= 0) return source.getEnumerator(); // do nothing
+
+            var enumerator;
+            var q = [];
+
+            return new IEnumerator(
+                function () { enumerator = source.getEnumerator(); },
+                function () {
+                    while (enumerator.moveNext()) {
+                        if (q.length == count) {
+                            q.push(enumerator.current());
+                            return this.yieldReturn(q.shift());
+                        }
+                        q.push(enumerator.current());
+                    }
+                    return false;
+                },
+                function () { Utils.dispose(enumerator); });
+        });
+    };
+
+    Enumerable.prototype.takeFromLast = function (count) {
+        if (count <= 0 || count == null) return Enumerable.empty();
+        var source = this;
+
+        return new Enumerable(function () {
+            var sourceEnumerator;
+            var enumerator;
+            var q = [];
+
+            return new IEnumerator(
+                function () { sourceEnumerator = source.getEnumerator(); },
+                function () {
+                    while (sourceEnumerator.moveNext()) {
+                        if (q.length == count) q.shift();
+                        q.push(sourceEnumerator.current());
+                    }
+                    if (enumerator == null) {
+                        enumerator = Enumerable.from(q).getEnumerator();
+                    }
+                    return (enumerator.moveNext())
+                        ? this.yieldReturn(enumerator.current())
+                        : false;
+                },
+                function () { Utils.dispose(enumerator); });
+        });
+    };
+
+    // Overload:function(item)
+    // Overload:function(predicate)
+    Enumerable.prototype.indexOf = function (item) {
+        var found = null;
+
+        // item as predicate
+        if (typeof (item) === Types.Function) {
+            this.forEach(function (x, i) {
+                if (item(x, i)) {
+                    found = i;
+                    return false;
+                }
+            });
+        }
+        else {
+            this.forEach(function (x, i) {
+                if (x === item) {
+                    found = i;
+                    return false;
+                }
+            });
+        }
+
+        return (found !== null) ? found : -1;
+    };
+
+    // Overload:function(item)
+    // Overload:function(predicate)
+    Enumerable.prototype.lastIndexOf = function (item) {
+        var result = -1;
+
+        // item as predicate
+        if (typeof (item) === Types.Function) {
+            this.forEach(function (x, i) {
+                if (item(x, i)) result = i;
+            });
+        }
+        else {
+            this.forEach(function (x, i) {
+                if (x === item) result = i;
+            });
+        }
+
+        return result;
+    };
+
+    /* Convert Methods */
+
+    Enumerable.prototype.cast = function () {
+        return this;
+    };
+
+    Enumerable.prototype.asEnumerable = function () {
+        return Enumerable.from(this);
+    };
+
+    Enumerable.prototype.toArray = function () {
+        var array = [];
+        this.forEach(function (x) { array.push(x); });
+        return array;
+    };
+
+    // Overload:function(keySelector)
+    // Overload:function(keySelector, elementSelector)
+    // Overload:function(keySelector, elementSelector, compareSelector)
+    Enumerable.prototype.toLookup = function (keySelector, elementSelector, compareSelector) {
+        keySelector = Utils.createLambda(keySelector);
+        elementSelector = Utils.createLambda(elementSelector);
+        compareSelector = Utils.createLambda(compareSelector);
+
+        var dict = new Dictionary(compareSelector);
+        this.forEach(function (x) {
+            var key = keySelector(x);
+            var element = elementSelector(x);
+
+            var array = dict.get(key);
+            if (array !== undefined) array.push(element);
+            else dict.add(key, [element]);
+        });
+        return new Lookup(dict);
+    };
+
+    Enumerable.prototype.toObject = function (keySelector, elementSelector) {
+        keySelector = Utils.createLambda(keySelector);
+        elementSelector = Utils.createLambda(elementSelector);
+
+        var obj = {};
+        this.forEach(function (x) {
+            obj[keySelector(x)] = elementSelector(x);
+        });
+        return obj;
+    };
+
+    // Overload:function(keySelector, elementSelector)
+    // Overload:function(keySelector, elementSelector, compareSelector)
+    Enumerable.prototype.toDictionary = function (keySelector, elementSelector, compareSelector) {
+        keySelector = Utils.createLambda(keySelector);
+        elementSelector = Utils.createLambda(elementSelector);
+        compareSelector = Utils.createLambda(compareSelector);
+
+        var dict = new Dictionary(compareSelector);
+        this.forEach(function (x) {
+            dict.add(keySelector(x), elementSelector(x));
+        });
+        return dict;
+    };
+
+    // Overload:function()
+    // Overload:function(replacer)
+    // Overload:function(replacer, space)
+    Enumerable.prototype.toJSONString = function (replacer, space) {
+        if (typeof JSON === Types.Undefined || JSON.stringify == null) {
+            throw new Error("toJSONString can't find JSON.stringify. This works native JSON support Browser or include json2.js");
+        }
+        return JSON.stringify(this.toArray(), replacer, space);
+    };
+
+    // Overload:function()
+    // Overload:function(separator)
+    // Overload:function(separator,selector)
+    Enumerable.prototype.toJoinedString = function (separator, selector) {
+        if (separator == null) separator = "";
+        if (selector == null) selector = Functions.Identity;
+
+        return this.select(selector).toArray().join(separator);
+    };
+
+
+    /* Action Methods */
+
+    // Overload:function(action<element>)
+    // Overload:function(action<element,index>)
+    Enumerable.prototype.doAction = function (action) {
+        var source = this;
+        action = Utils.createLambda(action);
+
+        return new Enumerable(function () {
+            var enumerator;
+            var index = 0;
+
+            return new IEnumerator(
+                function () { enumerator = source.getEnumerator(); },
+                function () {
+                    if (enumerator.moveNext()) {
+                        action(enumerator.current(), index++);
+                        return this.yieldReturn(enumerator.current());
+                    }
+                    return false;
+                },
+                function () { Utils.dispose(enumerator); });
+        });
+    };
+
+    // Overload:function(action<element>)
+    // Overload:function(action<element,index>)
+    // Overload:function(func<element,bool>)
+    // Overload:function(func<element,index,bool>)
+    Enumerable.prototype.forEach = function (action) {
+        action = Utils.createLambda(action);
+
+        var index = 0;
+        var enumerator = this.getEnumerator();
+        try {
+            while (enumerator.moveNext()) {
+                if (action(enumerator.current(), index++) === false) break;
+            }
+        } finally {
+            Utils.dispose(enumerator);
+        }
+    };
+
+    // Overload:function()
+    // Overload:function(separator)
+    // Overload:function(separator,selector)
+    Enumerable.prototype.write = function (separator, selector) {
+        if (separator == null) separator = "";
+        selector = Utils.createLambda(selector);
+
+        var isFirst = true;
+        this.forEach(function (item) {
+            if (isFirst) isFirst = false;
+            else document.write(separator);
+            document.write(selector(item));
+        });
+    };
+
+    // Overload:function()
+    // Overload:function(selector)
+    Enumerable.prototype.writeLine = function (selector) {
+        selector = Utils.createLambda(selector);
+
+        this.forEach(function (item) {
+            document.writeln(selector(item) + "<br />");
+        });
+    };
+
+    Enumerable.prototype.force = function () {
+        var enumerator = this.getEnumerator();
+
+        try {
+            while (enumerator.moveNext()) {
+            }
+        }
+        finally {
+            Utils.dispose(enumerator);
+        }
+    };
+
+    /* Functional Methods */
+
+    Enumerable.prototype.letBind = function (func) {
+        func = Utils.createLambda(func);
+        var source = this;
+
+        return new Enumerable(function () {
+            var enumerator;
+
+            return new IEnumerator(
+                function () {
+                    enumerator = Enumerable.from(func(source)).getEnumerator();
+                },
+                function () {
+                    return (enumerator.moveNext())
+                        ? this.yieldReturn(enumerator.current())
+                        : false;
+                },
+                function () { Utils.dispose(enumerator); });
+        });
+    };
+
+    Enumerable.prototype.share = function () {
+        var source = this;
+        var sharedEnumerator;
+        var disposed = false;
+
+        return new DisposableEnumerable(function () {
+            return new IEnumerator(
+                function () {
+                    if (sharedEnumerator == null) {
+                        sharedEnumerator = source.getEnumerator();
+                    }
+                },
+                function () {
+                    if (disposed) throw new Error("enumerator is disposed");
+
+                    return (sharedEnumerator.moveNext())
+                        ? this.yieldReturn(sharedEnumerator.current())
+                        : false;
+                },
+                Functions.Blank
+            );
+        }, function () {
+            disposed = true;
+            Utils.dispose(sharedEnumerator);
+        });
+    };
+
+    Enumerable.prototype.memoize = function () {
+        var source = this;
+        var cache;
+        var enumerator;
+        var disposed = false;
+
+        return new DisposableEnumerable(function () {
+            var index = -1;
+
+            return new IEnumerator(
+                function () {
+                    if (enumerator == null) {
+                        enumerator = source.getEnumerator();
+                        cache = [];
+                    }
+                },
+                function () {
+                    if (disposed) throw new Error("enumerator is disposed");
+
+                    index++;
+                    if (cache.length <= index) {
+                        return (enumerator.moveNext())
+                            ? this.yieldReturn(cache[index] = enumerator.current())
+                            : false;
+                    }
+
+                    return this.yieldReturn(cache[index]);
+                },
+                Functions.Blank
+            );
+        }, function () {
+            disposed = true;
+            Utils.dispose(enumerator);
+            cache = null;
+        });
+    };
+
+    /* Error Handling Methods */
+
+    Enumerable.prototype.catchError = function (handler) {
+        handler = Utils.createLambda(handler);
+        var source = this;
+
+        return new Enumerable(function () {
+            var enumerator;
+
+            return new IEnumerator(
+                function () { enumerator = source.getEnumerator(); },
+                function () {
+                    try {
+                        return (enumerator.moveNext())
+                            ? this.yieldReturn(enumerator.current())
+                            : false;
+                    } catch (e) {
+                        handler(e);
+                        return false;
+                    }
+                },
+                function () { Utils.dispose(enumerator); });
+        });
+    };
+
+    Enumerable.prototype.finallyAction = function (finallyAction) {
+        finallyAction = Utils.createLambda(finallyAction);
+        var source = this;
+
+        return new Enumerable(function () {
+            var enumerator;
+
+            return new IEnumerator(
+                function () { enumerator = source.getEnumerator(); },
+                function () {
+                    return (enumerator.moveNext())
+                        ? this.yieldReturn(enumerator.current())
+                        : false;
+                },
+                function () {
+                    try {
+                        Utils.dispose(enumerator);
+                    } finally {
+                        finallyAction();
+                    }
+                });
+        });
+    };
+
+    /* For Debug Methods */
+
+    // Overload:function()
+    // Overload:function(selector)
+    Enumerable.prototype.log = function (selector) {
+        selector = Utils.createLambda(selector);
+
+        return this.doAction(function (item) {
+            if (typeof console !== Types.Undefined) {
+                console.log(selector(item));
+            }
+        });
+    };
+
+    // Overload:function()
+    // Overload:function(message)
+    // Overload:function(message,selector)
+    Enumerable.prototype.trace = function (message, selector) {
+        if (message == null) message = "Trace";
+        selector = Utils.createLambda(selector);
+
+        return this.doAction(function (item) {
+            if (typeof console !== Types.Undefined) {
+                console.log(message, selector(item));
+            }
+        });
+    };
+
+    // private
+
+    var OrderedEnumerable = function (source, keySelector, descending, parent) {
+        this.source = source;
+        this.keySelector = Utils.createLambda(keySelector);
+        this.descending = descending;
+        this.parent = parent;
+    };
+    OrderedEnumerable.prototype = new Enumerable();
+
+    OrderedEnumerable.prototype.createOrderedEnumerable = function (keySelector, descending) {
+        return new OrderedEnumerable(this.source, keySelector, descending, this);
+    };
+
+    OrderedEnumerable.prototype.thenBy = function (keySelector) {
+        return this.createOrderedEnumerable(keySelector, false);
+    };
+
+    OrderedEnumerable.prototype.thenByDescending = function (keySelector) {
+        return this.createOrderedEnumerable(keySelector, true);
+    };
+
+    OrderedEnumerable.prototype.getEnumerator = function () {
+        var self = this;
+        var buffer;
+        var indexes;
+        var index = 0;
+
+        return new IEnumerator(
+            function () {
+                buffer = [];
+                indexes = [];
+                self.source.forEach(function (item, index) {
+                    buffer.push(item);
+                    indexes.push(index);
+                });
+                var sortContext = SortContext.create(self, null);
+                sortContext.GenerateKeys(buffer);
+
+                indexes.sort(function (a, b) { return sortContext.compare(a, b); });
+            },
+            function () {
+                return (index < indexes.length)
+                    ? this.yieldReturn(buffer[indexes[index++]])
+                    : false;
+            },
+            Functions.Blank
+        );
+    };
+
+    var SortContext = function (keySelector, descending, child) {
+        this.keySelector = keySelector;
+        this.descending = descending;
+        this.child = child;
+        this.keys = null;
+    };
+
+    SortContext.create = function (orderedEnumerable, currentContext) {
+        var context = new SortContext(orderedEnumerable.keySelector, orderedEnumerable.descending, currentContext);
+        if (orderedEnumerable.parent != null) return SortContext.create(orderedEnumerable.parent, context);
+        return context;
+    };
+
+    SortContext.prototype.GenerateKeys = function (source) {
+        var len = source.length;
+        var keySelector = this.keySelector;
+        var keys = new Array(len);
+        for (var i = 0; i < len; i++) keys[i] = keySelector(source[i]);
+        this.keys = keys;
+
+        if (this.child != null) this.child.GenerateKeys(source);
+    };
+
+    SortContext.prototype.compare = function (index1, index2) {
+        var comparison = Utils.compare(this.keys[index1], this.keys[index2]);
+
+        if (comparison == 0) {
+            if (this.child != null) return this.child.compare(index1, index2);
+            return Utils.compare(index1, index2);
+        }
+
+        return (this.descending) ? -comparison : comparison;
+    };
+
+    var DisposableEnumerable = function (getEnumerator, dispose) {
+        this.dispose = dispose;
+        Enumerable.call(this, getEnumerator);
+    };
+    DisposableEnumerable.prototype = new Enumerable();
+
+    // optimize array or arraylike object
+
+    var ArrayEnumerable = function (source) {
+        this.getSource = function () { return source; };
+    };
+    ArrayEnumerable.prototype = new Enumerable();
+
+    ArrayEnumerable.prototype.any = function (predicate) {
+        return (predicate == null)
+            ? (this.getSource().length > 0)
+            : Enumerable.prototype.any.apply(this, arguments);
+    };
+
+    ArrayEnumerable.prototype.count = function (predicate) {
+        return (predicate == null)
+            ? this.getSource().length
+            : Enumerable.prototype.count.apply(this, arguments);
+    };
+
+    ArrayEnumerable.prototype.elementAt = function (index) {
+        var source = this.getSource();
+        return (0 <= index && index < source.length)
+            ? source[index]
+            : Enumerable.prototype.elementAt.apply(this, arguments);
+    };
+
+    ArrayEnumerable.prototype.elementAtOrDefault = function (index, defaultValue) {
+        if (defaultValue === undefined) defaultValue = null;
+        var source = this.getSource();
+        return (0 <= index && index < source.length)
+            ? source[index]
+            : defaultValue;
+    };
+
+    ArrayEnumerable.prototype.first = function (predicate) {
+        var source = this.getSource();
+        return (predicate == null && source.length > 0)
+            ? source[0]
+            : Enumerable.prototype.first.apply(this, arguments);
+    };
+
+    ArrayEnumerable.prototype.firstOrDefault = function (predicate, defaultValue) {
+        if (defaultValue === undefined) defaultValue = null;
+        if (predicate != null) {
+            return Enumerable.prototype.firstOrDefault.apply(this, arguments);
+        }
+
+        var source = this.getSource();
+        return source.length > 0 ? source[0] : defaultValue;
+    };
+
+    ArrayEnumerable.prototype.last = function (predicate) {
+        var source = this.getSource();
+        return (predicate == null && source.length > 0)
+            ? source[source.length - 1]
+            : Enumerable.prototype.last.apply(this, arguments);
+    };
+
+    ArrayEnumerable.prototype.lastOrDefault = function (predicate, defaultValue) {
+        if (defaultValue === undefined) defaultValue = null;
+        if (predicate != null) {
+            return Enumerable.prototype.lastOrDefault.apply(this, arguments);
+        }
+
+        var source = this.getSource();
+        return source.length > 0 ? source[source.length - 1] : defaultValue;
+    };
+
+    ArrayEnumerable.prototype.skip = function (count) {
+        var source = this.getSource();
+
+        return new Enumerable(function () {
+            var index;
+
+            return new IEnumerator(
+                function () { index = (count < 0) ? 0 : count; },
+                function () {
+                    return (index < source.length)
+                        ? this.yieldReturn(source[index++])
+                        : false;
+                },
+                Functions.Blank);
+        });
+    };
+
+    ArrayEnumerable.prototype.takeExceptLast = function (count) {
+        if (count == null) count = 1;
+        return this.take(this.getSource().length - count);
+    };
+
+    ArrayEnumerable.prototype.takeFromLast = function (count) {
+        return this.skip(this.getSource().length - count);
+    };
+
+    ArrayEnumerable.prototype.reverse = function () {
+        var source = this.getSource();
+
+        return new Enumerable(function () {
+            var index;
+
+            return new IEnumerator(
+                function () {
+                    index = source.length;
+                },
+                function () {
+                    return (index > 0)
+                        ? this.yieldReturn(source[--index])
+                        : false;
+                },
+                Functions.Blank);
+        });
+    };
+
+    ArrayEnumerable.prototype.sequenceEqual = function (second, compareSelector) {
+        if ((second instanceof ArrayEnumerable || second instanceof Array)
+            && compareSelector == null
+            && Enumerable.from(second).count() != this.count()) {
+            return false;
+        }
+
+        return Enumerable.prototype.sequenceEqual.apply(this, arguments);
+    };
+
+    ArrayEnumerable.prototype.toJoinedString = function (separator, selector) {
+        var source = this.getSource();
+        if (selector != null || !(source instanceof Array)) {
+            return Enumerable.prototype.toJoinedString.apply(this, arguments);
+        }
+
+        if (separator == null) separator = "";
+        return source.join(separator);
+    };
+
+    ArrayEnumerable.prototype.getEnumerator = function () {
+        var source = this.getSource();
+        var index = -1;
+
+        // fast and simple enumerator
+        return {
+            current: function () { return source[index]; },
+            moveNext: function () {
+                return ++index < source.length;
+            },
+            dispose: Functions.Blank
+        };
+    };
+
+    // optimization for multiple where and multiple select and whereselect
+
+    var WhereEnumerable = function (source, predicate) {
+        this.prevSource = source;
+        this.prevPredicate = predicate; // predicate.length always <= 1
+    };
+    WhereEnumerable.prototype = new Enumerable();
+
+    WhereEnumerable.prototype.where = function (predicate) {
+        predicate = Utils.createLambda(predicate);
+
+        if (predicate.length <= 1) {
+            var prevPredicate = this.prevPredicate;
+            var composedPredicate = function (x) { return prevPredicate(x) && predicate(x); };
+            return new WhereEnumerable(this.prevSource, composedPredicate);
+        }
+        else {
+            // if predicate use index, can't compose
+            return Enumerable.prototype.where.call(this, predicate);
+        }
+    };
+
+    WhereEnumerable.prototype.select = function (selector) {
+        selector = Utils.createLambda(selector);
+
+        return (selector.length <= 1)
+            ? new WhereSelectEnumerable(this.prevSource, this.prevPredicate, selector)
+            : Enumerable.prototype.select.call(this, selector);
+    };
+
+    WhereEnumerable.prototype.getEnumerator = function () {
+        var predicate = this.prevPredicate;
+        var source = this.prevSource;
+        var enumerator;
+
+        return new IEnumerator(
+            function () { enumerator = source.getEnumerator(); },
+            function () {
+                while (enumerator.moveNext()) {
+                    if (predicate(enumerator.current())) {
+                        return this.yieldReturn(enumerator.current());
+                    }
+                }
+                return false;
+            },
+            function () { Utils.dispose(enumerator); });
+    };
+
+    var WhereSelectEnumerable = function (source, predicate, selector) {
+        this.prevSource = source;
+        this.prevPredicate = predicate; // predicate.length always <= 1 or null
+        this.prevSelector = selector; // selector.length always <= 1
+    };
+    WhereSelectEnumerable.prototype = new Enumerable();
+
+    WhereSelectEnumerable.prototype.where = function (predicate) {
+        predicate = Utils.createLambda(predicate);
+
+        return (predicate.length <= 1)
+            ? new WhereEnumerable(this, predicate)
+            : Enumerable.prototype.where.call(this, predicate);
+    };
+
+    WhereSelectEnumerable.prototype.select = function (selector) {
+        selector = Utils.createLambda(selector);
+
+        if (selector.length <= 1) {
+            var prevSelector = this.prevSelector;
+            var composedSelector = function (x) { return selector(prevSelector(x)); };
+            return new WhereSelectEnumerable(this.prevSource, this.prevPredicate, composedSelector);
+        }
+        else {
+            // if selector use index, can't compose
+            return Enumerable.prototype.select.call(this, selector);
+        }
+    };
+
+    WhereSelectEnumerable.prototype.getEnumerator = function () {
+        var predicate = this.prevPredicate;
+        var selector = this.prevSelector;
+        var source = this.prevSource;
+        var enumerator;
+
+        return new IEnumerator(
+            function () { enumerator = source.getEnumerator(); },
+            function () {
+                while (enumerator.moveNext()) {
+                    if (predicate == null || predicate(enumerator.current())) {
+                        return this.yieldReturn(selector(enumerator.current()));
+                    }
+                }
+                return false;
+            },
+            function () { Utils.dispose(enumerator); });
+    };
+
+    // Collections
+
+    var Dictionary = (function () {
+        // static utility methods
+        var callHasOwnProperty = function (target, key) {
+            return Object.prototype.hasOwnProperty.call(target, key);
+        };
+
+        var computeHashCode = function (obj) {
+            if (obj === null) return "null";
+            if (obj === undefined) return "undefined";
+
+            return (typeof obj.toString === Types.Function)
+                ? obj.toString()
+                : Object.prototype.toString.call(obj);
+        };
+
+        // LinkedList for Dictionary
+        var HashEntry = function (key, value) {
+            this.key = key;
+            this.value = value;
+            this.prev = null;
+            this.next = null;
+        };
+
+        var EntryList = function () {
+            this.first = null;
+            this.last = null;
+        };
+        EntryList.prototype =
+        {
+            addLast: function (entry) {
+                if (this.last != null) {
+                    this.last.next = entry;
+                    entry.prev = this.last;
+                    this.last = entry;
+                } else this.first = this.last = entry;
+            },
+
+            replace: function (entry, newEntry) {
+                if (entry.prev != null) {
+                    entry.prev.next = newEntry;
+                    newEntry.prev = entry.prev;
+                } else this.first = newEntry;
+
+                if (entry.next != null) {
+                    entry.next.prev = newEntry;
+                    newEntry.next = entry.next;
+                } else this.last = newEntry;
+
+            },
+
+            remove: function (entry) {
+                if (entry.prev != null) entry.prev.next = entry.next;
+                else this.first = entry.next;
+
+                if (entry.next != null) entry.next.prev = entry.prev;
+                else this.last = entry.prev;
+            }
+        };
+
+        // Overload:function()
+        // Overload:function(compareSelector)
+        var Dictionary = function (compareSelector) {
+            this.countField = 0;
+            this.entryList = new EntryList();
+            this.buckets = {}; // as Dictionary<string,List<object>>
+            this.compareSelector = (compareSelector == null) ? Functions.Identity : compareSelector;
+        };
+        Dictionary.prototype =
+        {
+            add: function (key, value) {
+                var compareKey = this.compareSelector(key);
+                var hash = computeHashCode(compareKey);
+                var entry = new HashEntry(key, value);
+                if (callHasOwnProperty(this.buckets, hash)) {
+                    var array = this.buckets[hash];
+                    for (var i = 0; i < array.length; i++) {
+                        if (this.compareSelector(array[i].key) === compareKey) {
+                            this.entryList.replace(array[i], entry);
+                            array[i] = entry;
+                            return;
+                        }
+                    }
+                    array.push(entry);
+                } else {
+                    this.buckets[hash] = [entry];
+                }
+                this.countField++;
+                this.entryList.addLast(entry);
+            },
+
+            get: function (key) {
+                var compareKey = this.compareSelector(key);
+                var hash = computeHashCode(compareKey);
+                if (!callHasOwnProperty(this.buckets, hash)) return undefined;
+
+                var array = this.buckets[hash];
+                for (var i = 0; i < array.length; i++) {
+                    var entry = array[i];
+                    if (this.compareSelector(entry.key) === compareKey) return entry.value;
+                }
+                return undefined;
+            },
+
+            set: function (key, value) {
+                var compareKey = this.compareSelector(key);
+                var hash = computeHashCode(compareKey);
+                if (callHasOwnProperty(this.buckets, hash)) {
+                    var array = this.buckets[hash];
+                    for (var i = 0; i < array.length; i++) {
+                        if (this.compareSelector(array[i].key) === compareKey) {
+                            var newEntry = new HashEntry(key, value);
+                            this.entryList.replace(array[i], newEntry);
+                            array[i] = newEntry;
+                            return true;
+                        }
+                    }
+                }
+                return false;
+            },
+
+            contains: function (key) {
+                var compareKey = this.compareSelector(key);
+                var hash = computeHashCode(compareKey);
+                if (!callHasOwnProperty(this.buckets, hash)) return false;
+
+                var array = this.buckets[hash];
+                for (var i = 0; i < array.length; i++) {
+                    if (this.compareSelector(array[i].key) === compareKey) return true;
+                }
+                return false;
+            },
+
+            clear: function () {
+                this.countField = 0;
+                this.buckets = {};
+                this.entryList = new EntryList();
+            },
+
+            remove: function (key) {
+                var compareKey = this.compareSelector(key);
+                var hash = computeHashCode(compareKey);
+                if (!callHasOwnProperty(this.buckets, hash)) return;
+
+                var array = this.buckets[hash];
+                for (var i = 0; i < array.length; i++) {
+                    if (this.compareSelector(array[i].key) === compareKey) {
+                        this.entryList.remove(array[i]);
+                        array.splice(i, 1);
+                        if (array.length == 0) delete this.buckets[hash];
+                        this.countField--;
+                        return;
+                    }
+                }
+            },
+
+            count: function () {
+                return this.countField;
+            },
+
+            toEnumerable: function () {
+                var self = this;
+                return new Enumerable(function () {
+                    var currentEntry;
+
+                    return new IEnumerator(
+                        function () { currentEntry = self.entryList.first; },
+                        function () {
+                            if (currentEntry != null) {
+                                var result = { key: currentEntry.key, value: currentEntry.value };
+                                currentEntry = currentEntry.next;
+                                return this.yieldReturn(result);
+                            }
+                            return false;
+                        },
+                        Functions.Blank);
+                });
+            }
+        };
+
+        return Dictionary;
+    })();
+
+    // dictionary = Dictionary<TKey, TValue[]>
+    var Lookup = function (dictionary) {
+        this.count = function () {
+            return dictionary.count();
+        };
+        this.get = function (key) {
+            return Enumerable.from(dictionary.get(key));
+        };
+        this.contains = function (key) {
+            return dictionary.contains(key);
+        };
+        this.toEnumerable = function () {
+            return dictionary.toEnumerable().select(function (kvp) {
+                return new Grouping(kvp.key, kvp.value);
+            });
+        };
+    };
+
+    var Grouping = function (groupKey, elements) {
+        this.key = function () {
+            return groupKey;
+        };
+        ArrayEnumerable.call(this, elements);
+    };
+    Grouping.prototype = new ArrayEnumerable();
+
+    // module export
+    if (typeof define === Types.Function && define.amd) { // AMD
+        define("linqjs", [], function () { return Enumerable; });
+    }
+    else if (typeof module !== Types.Undefined && module.exports) { // Node
+        module.exports = Enumerable;
+    }
+    else {
+        root.Enumerable = Enumerable;
+    }
+})(this);
+},{}],10:[function(require,module,exports){
 (function (global){
 /**
  * @license
@@ -22447,12 +25465,12 @@ function hasOwnProperty(obj, prop) {
 }.call(this));
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],10:[function(require,module,exports){
+},{}],11:[function(require,module,exports){
 // super simple module for the most common nodejs use case.
 exports.markdown = require("./markdown");
 exports.parse = exports.markdown.toHTML;
 
-},{"./markdown":11}],11:[function(require,module,exports){
+},{"./markdown":12}],12:[function(require,module,exports){
 // Released under MIT license
 // Copyright (c) 2009-2010 Dominic Baggott
 // Copyright (c) 2009-2010 Ash Berlin
@@ -24179,7 +27197,7 @@ function merge_text_nodes( jsonml ) {
   }
 } )() );
 
-},{"util":8}],12:[function(require,module,exports){
+},{"util":8}],13:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -24206,7 +27224,7 @@ var AutoFocusMixin = {
 
 module.exports = AutoFocusMixin;
 
-},{"./focusNode":130}],13:[function(require,module,exports){
+},{"./focusNode":131}],14:[function(require,module,exports){
 /**
  * Copyright 2013-2015 Facebook, Inc.
  * All rights reserved.
@@ -24701,7 +27719,7 @@ var BeforeInputEventPlugin = {
 
 module.exports = BeforeInputEventPlugin;
 
-},{"./EventConstants":25,"./EventPropagators":30,"./ExecutionEnvironment":31,"./FallbackCompositionState":32,"./SyntheticCompositionEvent":104,"./SyntheticInputEvent":108,"./keyOf":152}],14:[function(require,module,exports){
+},{"./EventConstants":26,"./EventPropagators":31,"./ExecutionEnvironment":32,"./FallbackCompositionState":33,"./SyntheticCompositionEvent":105,"./SyntheticInputEvent":109,"./keyOf":153}],15:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -24826,8 +27844,7 @@ var CSSProperty = {
 
 module.exports = CSSProperty;
 
-},{}],15:[function(require,module,exports){
-(function (process){
+},{}],16:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -24863,7 +27880,7 @@ if (ExecutionEnvironment.canUseDOM) {
   }
 }
 
-if ("production" !== process.env.NODE_ENV) {
+if ("production" !== "development") {
   // 'msTransform' is correct, but the other prefixes should be capitalized
   var badVendoredStyleNamePattern = /^(?:webkit|moz|o)[A-Z]/;
 
@@ -24879,7 +27896,7 @@ if ("production" !== process.env.NODE_ENV) {
     }
 
     warnedStyleNames[name] = true;
-    ("production" !== process.env.NODE_ENV ? warning(
+    ("production" !== "development" ? warning(
       false,
       'Unsupported style property %s. Did you mean %s?',
       name,
@@ -24893,7 +27910,7 @@ if ("production" !== process.env.NODE_ENV) {
     }
 
     warnedStyleNames[name] = true;
-    ("production" !== process.env.NODE_ENV ? warning(
+    ("production" !== "development" ? warning(
       false,
       'Unsupported vendor-prefixed style property %s. Did you mean %s?',
       name,
@@ -24907,7 +27924,7 @@ if ("production" !== process.env.NODE_ENV) {
     }
 
     warnedStyleValues[value] = true;
-    ("production" !== process.env.NODE_ENV ? warning(
+    ("production" !== "development" ? warning(
       false,
       'Style property values shouldn\'t contain a semicolon. ' +
       'Try "%s: %s" instead.',
@@ -24955,7 +27972,7 @@ var CSSPropertyOperations = {
         continue;
       }
       var styleValue = styles[styleName];
-      if ("production" !== process.env.NODE_ENV) {
+      if ("production" !== "development") {
         warnValidStyle(styleName, styleValue);
       }
       if (styleValue != null) {
@@ -24979,7 +27996,7 @@ var CSSPropertyOperations = {
       if (!styles.hasOwnProperty(styleName)) {
         continue;
       }
-      if ("production" !== process.env.NODE_ENV) {
+      if ("production" !== "development") {
         warnValidStyle(styleName, styles[styleName]);
       }
       var styleValue = dangerousStyleValue(styleName, styles[styleName]);
@@ -25007,9 +28024,7 @@ var CSSPropertyOperations = {
 
 module.exports = CSSPropertyOperations;
 
-}).call(this,require('_process'))
-},{"./CSSProperty":14,"./ExecutionEnvironment":31,"./camelizeStyleName":119,"./dangerousStyleValue":124,"./hyphenateStyleName":144,"./memoizeStringOnly":154,"./warning":165,"_process":6}],16:[function(require,module,exports){
-(function (process){
+},{"./CSSProperty":15,"./ExecutionEnvironment":32,"./camelizeStyleName":120,"./dangerousStyleValue":125,"./hyphenateStyleName":145,"./memoizeStringOnly":155,"./warning":166}],17:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -25070,7 +28085,7 @@ assign(CallbackQueue.prototype, {
     var callbacks = this._callbacks;
     var contexts = this._contexts;
     if (callbacks) {
-      ("production" !== process.env.NODE_ENV ? invariant(
+      ("production" !== "development" ? invariant(
         callbacks.length === contexts.length,
         'Mismatched list of contexts in callback queue'
       ) : invariant(callbacks.length === contexts.length));
@@ -25107,8 +28122,7 @@ PooledClass.addPoolingTo(CallbackQueue);
 
 module.exports = CallbackQueue;
 
-}).call(this,require('_process'))
-},{"./Object.assign":37,"./PooledClass":38,"./invariant":146,"_process":6}],17:[function(require,module,exports){
+},{"./Object.assign":38,"./PooledClass":39,"./invariant":147}],18:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -25490,7 +28504,7 @@ var ChangeEventPlugin = {
 
 module.exports = ChangeEventPlugin;
 
-},{"./EventConstants":25,"./EventPluginHub":27,"./EventPropagators":30,"./ExecutionEnvironment":31,"./ReactUpdates":98,"./SyntheticEvent":106,"./isEventSupported":147,"./isTextInputElement":149,"./keyOf":152}],18:[function(require,module,exports){
+},{"./EventConstants":26,"./EventPluginHub":28,"./EventPropagators":31,"./ExecutionEnvironment":32,"./ReactUpdates":99,"./SyntheticEvent":107,"./isEventSupported":148,"./isTextInputElement":150,"./keyOf":153}],19:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -25515,8 +28529,7 @@ var ClientReactRootIndex = {
 
 module.exports = ClientReactRootIndex;
 
-},{}],19:[function(require,module,exports){
-(function (process){
+},{}],20:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -25588,7 +28601,7 @@ var DOMChildrenOperations = {
         var updatedChild = update.parentNode.childNodes[updatedIndex];
         var parentID = update.parentID;
 
-        ("production" !== process.env.NODE_ENV ? invariant(
+        ("production" !== "development" ? invariant(
           updatedChild,
           'processUpdates(): Unable to find child %s of element. This ' +
           'probably means the DOM was unexpectedly mutated (e.g., by the ' +
@@ -25652,9 +28665,7 @@ var DOMChildrenOperations = {
 
 module.exports = DOMChildrenOperations;
 
-}).call(this,require('_process'))
-},{"./Danger":22,"./ReactMultiChildUpdateTypes":83,"./invariant":146,"./setTextContent":160,"_process":6}],20:[function(require,module,exports){
-(function (process){
+},{"./Danger":23,"./ReactMultiChildUpdateTypes":84,"./invariant":147,"./setTextContent":161}],21:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -25728,7 +28739,7 @@ var DOMPropertyInjection = {
     }
 
     for (var propName in Properties) {
-      ("production" !== process.env.NODE_ENV ? invariant(
+      ("production" !== "development" ? invariant(
         !DOMProperty.isStandardName.hasOwnProperty(propName),
         'injectDOMPropertyConfig(...): You\'re trying to inject DOM property ' +
         '\'%s\' which has already been injected. You may be accidentally ' +
@@ -25777,21 +28788,21 @@ var DOMPropertyInjection = {
       DOMProperty.hasOverloadedBooleanValue[propName] =
         checkMask(propConfig, DOMPropertyInjection.HAS_OVERLOADED_BOOLEAN_VALUE);
 
-      ("production" !== process.env.NODE_ENV ? invariant(
+      ("production" !== "development" ? invariant(
         !DOMProperty.mustUseAttribute[propName] ||
           !DOMProperty.mustUseProperty[propName],
         'DOMProperty: Cannot require using both attribute and property: %s',
         propName
       ) : invariant(!DOMProperty.mustUseAttribute[propName] ||
         !DOMProperty.mustUseProperty[propName]));
-      ("production" !== process.env.NODE_ENV ? invariant(
+      ("production" !== "development" ? invariant(
         DOMProperty.mustUseProperty[propName] ||
           !DOMProperty.hasSideEffects[propName],
         'DOMProperty: Properties that have side effects must use property: %s',
         propName
       ) : invariant(DOMProperty.mustUseProperty[propName] ||
         !DOMProperty.hasSideEffects[propName]));
-      ("production" !== process.env.NODE_ENV ? invariant(
+      ("production" !== "development" ? invariant(
         !!DOMProperty.hasBooleanValue[propName] +
           !!DOMProperty.hasNumericValue[propName] +
           !!DOMProperty.hasOverloadedBooleanValue[propName] <= 1,
@@ -25951,9 +28962,7 @@ var DOMProperty = {
 
 module.exports = DOMProperty;
 
-}).call(this,require('_process'))
-},{"./invariant":146,"_process":6}],21:[function(require,module,exports){
-(function (process){
+},{"./invariant":147}],22:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -25981,7 +28990,7 @@ function shouldIgnoreValue(name, value) {
     (DOMProperty.hasOverloadedBooleanValue[name] && value === false);
 }
 
-if ("production" !== process.env.NODE_ENV) {
+if ("production" !== "development") {
   var reactProps = {
     children: true,
     dangerouslySetInnerHTML: true,
@@ -26010,7 +29019,7 @@ if ("production" !== process.env.NODE_ENV) {
 
     // For now, only warn when we have a suggested correction. This prevents
     // logging too much when using transferPropsTo.
-    ("production" !== process.env.NODE_ENV ? warning(
+    ("production" !== "development" ? warning(
       standardName == null,
       'Unknown DOM property %s. Did you mean %s?',
       name,
@@ -26060,7 +29069,7 @@ var DOMPropertyOperations = {
         return '';
       }
       return name + '=' + quoteAttributeValueForBrowser(value);
-    } else if ("production" !== process.env.NODE_ENV) {
+    } else if ("production" !== "development") {
       warnUnknownProperty(name);
     }
     return null;
@@ -26102,7 +29111,7 @@ var DOMPropertyOperations = {
       } else {
         node.setAttribute(name, '' + value);
       }
-    } else if ("production" !== process.env.NODE_ENV) {
+    } else if ("production" !== "development") {
       warnUnknownProperty(name);
     }
   },
@@ -26134,7 +29143,7 @@ var DOMPropertyOperations = {
       }
     } else if (DOMProperty.isCustomAttribute(name)) {
       node.removeAttribute(name);
-    } else if ("production" !== process.env.NODE_ENV) {
+    } else if ("production" !== "development") {
       warnUnknownProperty(name);
     }
   }
@@ -26143,9 +29152,7 @@ var DOMPropertyOperations = {
 
 module.exports = DOMPropertyOperations;
 
-}).call(this,require('_process'))
-},{"./DOMProperty":20,"./quoteAttributeValueForBrowser":158,"./warning":165,"_process":6}],22:[function(require,module,exports){
-(function (process){
+},{"./DOMProperty":21,"./quoteAttributeValueForBrowser":159,"./warning":166}],23:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -26199,7 +29206,7 @@ var Danger = {
    * @internal
    */
   dangerouslyRenderMarkup: function(markupList) {
-    ("production" !== process.env.NODE_ENV ? invariant(
+    ("production" !== "development" ? invariant(
       ExecutionEnvironment.canUseDOM,
       'dangerouslyRenderMarkup(...): Cannot render markup in a worker ' +
       'thread. Make sure `window` and `document` are available globally ' +
@@ -26210,7 +29217,7 @@ var Danger = {
     var markupByNodeName = {};
     // Group markup by `nodeName` if a wrap is necessary, else by '*'.
     for (var i = 0; i < markupList.length; i++) {
-      ("production" !== process.env.NODE_ENV ? invariant(
+      ("production" !== "development" ? invariant(
         markupList[i],
         'dangerouslyRenderMarkup(...): Missing markup.'
       ) : invariant(markupList[i]));
@@ -26260,7 +29267,7 @@ var Danger = {
           resultIndex = +renderNode.getAttribute(RESULT_INDEX_ATTR);
           renderNode.removeAttribute(RESULT_INDEX_ATTR);
 
-          ("production" !== process.env.NODE_ENV ? invariant(
+          ("production" !== "development" ? invariant(
             !resultList.hasOwnProperty(resultIndex),
             'Danger: Assigning to an already-occupied result index.'
           ) : invariant(!resultList.hasOwnProperty(resultIndex)));
@@ -26271,7 +29278,7 @@ var Danger = {
           // we're done.
           resultListAssignmentCount += 1;
 
-        } else if ("production" !== process.env.NODE_ENV) {
+        } else if ("production" !== "development") {
           console.error(
             'Danger: Discarding unexpected node:',
             renderNode
@@ -26282,12 +29289,12 @@ var Danger = {
 
     // Although resultList was populated out of order, it should now be a dense
     // array.
-    ("production" !== process.env.NODE_ENV ? invariant(
+    ("production" !== "development" ? invariant(
       resultListAssignmentCount === resultList.length,
       'Danger: Did not assign to every index of resultList.'
     ) : invariant(resultListAssignmentCount === resultList.length));
 
-    ("production" !== process.env.NODE_ENV ? invariant(
+    ("production" !== "development" ? invariant(
       resultList.length === markupList.length,
       'Danger: Expected markup to render %s nodes, but rendered %s.',
       markupList.length,
@@ -26306,15 +29313,15 @@ var Danger = {
    * @internal
    */
   dangerouslyReplaceNodeWithMarkup: function(oldChild, markup) {
-    ("production" !== process.env.NODE_ENV ? invariant(
+    ("production" !== "development" ? invariant(
       ExecutionEnvironment.canUseDOM,
       'dangerouslyReplaceNodeWithMarkup(...): Cannot render markup in a ' +
       'worker thread. Make sure `window` and `document` are available ' +
       'globally before requiring React when unit testing or use ' +
       'React.renderToString for server rendering.'
     ) : invariant(ExecutionEnvironment.canUseDOM));
-    ("production" !== process.env.NODE_ENV ? invariant(markup, 'dangerouslyReplaceNodeWithMarkup(...): Missing markup.') : invariant(markup));
-    ("production" !== process.env.NODE_ENV ? invariant(
+    ("production" !== "development" ? invariant(markup, 'dangerouslyReplaceNodeWithMarkup(...): Missing markup.') : invariant(markup));
+    ("production" !== "development" ? invariant(
       oldChild.tagName.toLowerCase() !== 'html',
       'dangerouslyReplaceNodeWithMarkup(...): Cannot replace markup of the ' +
       '<html> node. This is because browser quirks make this unreliable ' +
@@ -26330,8 +29337,7 @@ var Danger = {
 
 module.exports = Danger;
 
-}).call(this,require('_process'))
-},{"./ExecutionEnvironment":31,"./createNodesFromMarkup":123,"./emptyFunction":125,"./getMarkupWrap":138,"./invariant":146,"_process":6}],23:[function(require,module,exports){
+},{"./ExecutionEnvironment":32,"./createNodesFromMarkup":124,"./emptyFunction":126,"./getMarkupWrap":139,"./invariant":147}],24:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -26370,7 +29376,7 @@ var DefaultEventPluginOrder = [
 
 module.exports = DefaultEventPluginOrder;
 
-},{"./keyOf":152}],24:[function(require,module,exports){
+},{"./keyOf":153}],25:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -26510,7 +29516,7 @@ var EnterLeaveEventPlugin = {
 
 module.exports = EnterLeaveEventPlugin;
 
-},{"./EventConstants":25,"./EventPropagators":30,"./ReactMount":81,"./SyntheticMouseEvent":110,"./keyOf":152}],25:[function(require,module,exports){
+},{"./EventConstants":26,"./EventPropagators":31,"./ReactMount":82,"./SyntheticMouseEvent":111,"./keyOf":153}],26:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -26582,8 +29588,7 @@ var EventConstants = {
 
 module.exports = EventConstants;
 
-},{"./keyMirror":151}],26:[function(require,module,exports){
-(function (process){
+},{"./keyMirror":152}],27:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  *
@@ -26646,7 +29651,7 @@ var EventListener = {
    */
   capture: function(target, eventType, callback) {
     if (!target.addEventListener) {
-      if ("production" !== process.env.NODE_ENV) {
+      if ("production" !== "development") {
         console.error(
           'Attempted to listen to events during the capture phase on a ' +
           'browser that does not support the capture phase. Your application ' +
@@ -26671,9 +29676,7 @@ var EventListener = {
 
 module.exports = EventListener;
 
-}).call(this,require('_process'))
-},{"./emptyFunction":125,"_process":6}],27:[function(require,module,exports){
-(function (process){
+},{"./emptyFunction":126}],28:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -26738,7 +29741,7 @@ function validateInstanceHandle() {
     InstanceHandle &&
     InstanceHandle.traverseTwoPhase &&
     InstanceHandle.traverseEnterLeave;
-  ("production" !== process.env.NODE_ENV ? invariant(
+  ("production" !== "development" ? invariant(
     valid,
     'InstanceHandle not injected before use!'
   ) : invariant(valid));
@@ -26785,13 +29788,13 @@ var EventPluginHub = {
      */
     injectInstanceHandle: function(InjectedInstanceHandle) {
       InstanceHandle = InjectedInstanceHandle;
-      if ("production" !== process.env.NODE_ENV) {
+      if ("production" !== "development") {
         validateInstanceHandle();
       }
     },
 
     getInstanceHandle: function() {
-      if ("production" !== process.env.NODE_ENV) {
+      if ("production" !== "development") {
         validateInstanceHandle();
       }
       return InstanceHandle;
@@ -26822,7 +29825,7 @@ var EventPluginHub = {
    * @param {?function} listener The callback to store.
    */
   putListener: function(id, registrationName, listener) {
-    ("production" !== process.env.NODE_ENV ? invariant(
+    ("production" !== "development" ? invariant(
       !listener || typeof listener === 'function',
       'Expected %s listener to be a function, instead got type %s',
       registrationName, typeof listener
@@ -26927,7 +29930,7 @@ var EventPluginHub = {
     var processingEventQueue = eventQueue;
     eventQueue = null;
     forEachAccumulated(processingEventQueue, executeDispatchesAndRelease);
-    ("production" !== process.env.NODE_ENV ? invariant(
+    ("production" !== "development" ? invariant(
       !eventQueue,
       'processEventQueue(): Additional events were enqueued while processing ' +
       'an event queue. Support for this has not yet been implemented.'
@@ -26949,9 +29952,7 @@ var EventPluginHub = {
 
 module.exports = EventPluginHub;
 
-}).call(this,require('_process'))
-},{"./EventPluginRegistry":28,"./EventPluginUtils":29,"./accumulateInto":116,"./forEachAccumulated":131,"./invariant":146,"_process":6}],28:[function(require,module,exports){
-(function (process){
+},{"./EventPluginRegistry":29,"./EventPluginUtils":30,"./accumulateInto":117,"./forEachAccumulated":132,"./invariant":147}],29:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -26991,7 +29992,7 @@ function recomputePluginOrdering() {
   for (var pluginName in namesToPlugins) {
     var PluginModule = namesToPlugins[pluginName];
     var pluginIndex = EventPluginOrder.indexOf(pluginName);
-    ("production" !== process.env.NODE_ENV ? invariant(
+    ("production" !== "development" ? invariant(
       pluginIndex > -1,
       'EventPluginRegistry: Cannot inject event plugins that do not exist in ' +
       'the plugin ordering, `%s`.',
@@ -27000,7 +30001,7 @@ function recomputePluginOrdering() {
     if (EventPluginRegistry.plugins[pluginIndex]) {
       continue;
     }
-    ("production" !== process.env.NODE_ENV ? invariant(
+    ("production" !== "development" ? invariant(
       PluginModule.extractEvents,
       'EventPluginRegistry: Event plugins must implement an `extractEvents` ' +
       'method, but `%s` does not.',
@@ -27009,7 +30010,7 @@ function recomputePluginOrdering() {
     EventPluginRegistry.plugins[pluginIndex] = PluginModule;
     var publishedEvents = PluginModule.eventTypes;
     for (var eventName in publishedEvents) {
-      ("production" !== process.env.NODE_ENV ? invariant(
+      ("production" !== "development" ? invariant(
         publishEventForPlugin(
           publishedEvents[eventName],
           PluginModule,
@@ -27036,7 +30037,7 @@ function recomputePluginOrdering() {
  * @private
  */
 function publishEventForPlugin(dispatchConfig, PluginModule, eventName) {
-  ("production" !== process.env.NODE_ENV ? invariant(
+  ("production" !== "development" ? invariant(
     !EventPluginRegistry.eventNameDispatchConfigs.hasOwnProperty(eventName),
     'EventPluginHub: More than one plugin attempted to publish the same ' +
     'event name, `%s`.',
@@ -27077,7 +30078,7 @@ function publishEventForPlugin(dispatchConfig, PluginModule, eventName) {
  * @private
  */
 function publishRegistrationName(registrationName, PluginModule, eventName) {
-  ("production" !== process.env.NODE_ENV ? invariant(
+  ("production" !== "development" ? invariant(
     !EventPluginRegistry.registrationNameModules[registrationName],
     'EventPluginHub: More than one plugin attempted to publish the same ' +
     'registration name, `%s`.',
@@ -27125,7 +30126,7 @@ var EventPluginRegistry = {
    * @see {EventPluginHub.injection.injectEventPluginOrder}
    */
   injectEventPluginOrder: function(InjectedEventPluginOrder) {
-    ("production" !== process.env.NODE_ENV ? invariant(
+    ("production" !== "development" ? invariant(
       !EventPluginOrder,
       'EventPluginRegistry: Cannot inject event plugin ordering more than ' +
       'once. You are likely trying to load more than one copy of React.'
@@ -27154,7 +30155,7 @@ var EventPluginRegistry = {
       var PluginModule = injectedNamesToPlugins[pluginName];
       if (!namesToPlugins.hasOwnProperty(pluginName) ||
           namesToPlugins[pluginName] !== PluginModule) {
-        ("production" !== process.env.NODE_ENV ? invariant(
+        ("production" !== "development" ? invariant(
           !namesToPlugins[pluginName],
           'EventPluginRegistry: Cannot inject two different event plugins ' +
           'using the same name, `%s`.',
@@ -27229,9 +30230,7 @@ var EventPluginRegistry = {
 
 module.exports = EventPluginRegistry;
 
-}).call(this,require('_process'))
-},{"./invariant":146,"_process":6}],29:[function(require,module,exports){
-(function (process){
+},{"./invariant":147}],30:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -27261,8 +30260,8 @@ var injection = {
   Mount: null,
   injectMount: function(InjectedMount) {
     injection.Mount = InjectedMount;
-    if ("production" !== process.env.NODE_ENV) {
-      ("production" !== process.env.NODE_ENV ? invariant(
+    if ("production" !== "development") {
+      ("production" !== "development" ? invariant(
         InjectedMount && InjectedMount.getNode,
         'EventPluginUtils.injection.injectMount(...): Injected Mount module ' +
         'is missing getNode.'
@@ -27290,7 +30289,7 @@ function isStartish(topLevelType) {
 
 
 var validateEventDispatches;
-if ("production" !== process.env.NODE_ENV) {
+if ("production" !== "development") {
   validateEventDispatches = function(event) {
     var dispatchListeners = event._dispatchListeners;
     var dispatchIDs = event._dispatchIDs;
@@ -27302,7 +30301,7 @@ if ("production" !== process.env.NODE_ENV) {
       dispatchListeners.length :
       dispatchListeners ? 1 : 0;
 
-    ("production" !== process.env.NODE_ENV ? invariant(
+    ("production" !== "development" ? invariant(
       idsIsArr === listenersIsArr && IDsLen === listenersLen,
       'EventPluginUtils: Invalid `event`.'
     ) : invariant(idsIsArr === listenersIsArr && IDsLen === listenersLen));
@@ -27317,7 +30316,7 @@ if ("production" !== process.env.NODE_ENV) {
 function forEachEventDispatch(event, cb) {
   var dispatchListeners = event._dispatchListeners;
   var dispatchIDs = event._dispatchIDs;
-  if ("production" !== process.env.NODE_ENV) {
+  if ("production" !== "development") {
     validateEventDispatches(event);
   }
   if (Array.isArray(dispatchListeners)) {
@@ -27365,7 +30364,7 @@ function executeDispatchesInOrder(event, cb) {
 function executeDispatchesInOrderStopAtTrueImpl(event) {
   var dispatchListeners = event._dispatchListeners;
   var dispatchIDs = event._dispatchIDs;
-  if ("production" !== process.env.NODE_ENV) {
+  if ("production" !== "development") {
     validateEventDispatches(event);
   }
   if (Array.isArray(dispatchListeners)) {
@@ -27406,12 +30405,12 @@ function executeDispatchesInOrderStopAtTrue(event) {
  * @return The return value of executing the single dispatch.
  */
 function executeDirectDispatch(event) {
-  if ("production" !== process.env.NODE_ENV) {
+  if ("production" !== "development") {
     validateEventDispatches(event);
   }
   var dispatchListener = event._dispatchListeners;
   var dispatchID = event._dispatchIDs;
-  ("production" !== process.env.NODE_ENV ? invariant(
+  ("production" !== "development" ? invariant(
     !Array.isArray(dispatchListener),
     'executeDirectDispatch(...): Invalid `event`.'
   ) : invariant(!Array.isArray(dispatchListener)));
@@ -27450,9 +30449,7 @@ var EventPluginUtils = {
 
 module.exports = EventPluginUtils;
 
-}).call(this,require('_process'))
-},{"./EventConstants":25,"./invariant":146,"_process":6}],30:[function(require,module,exports){
-(function (process){
+},{"./EventConstants":26,"./invariant":147}],31:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -27492,7 +30489,7 @@ function listenerAtPhase(id, event, propagationPhase) {
  * "dispatch" object that pairs the event with the listener.
  */
 function accumulateDirectionalDispatches(domID, upwards, event) {
-  if ("production" !== process.env.NODE_ENV) {
+  if ("production" !== "development") {
     if (!domID) {
       throw new Error('Dispatching id must not be null');
     }
@@ -27592,8 +30589,7 @@ var EventPropagators = {
 
 module.exports = EventPropagators;
 
-}).call(this,require('_process'))
-},{"./EventConstants":25,"./EventPluginHub":27,"./accumulateInto":116,"./forEachAccumulated":131,"_process":6}],31:[function(require,module,exports){
+},{"./EventConstants":26,"./EventPluginHub":28,"./accumulateInto":117,"./forEachAccumulated":132}],32:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -27637,7 +30633,7 @@ var ExecutionEnvironment = {
 
 module.exports = ExecutionEnvironment;
 
-},{}],32:[function(require,module,exports){
+},{}],33:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -27728,7 +30724,7 @@ PooledClass.addPoolingTo(FallbackCompositionState);
 
 module.exports = FallbackCompositionState;
 
-},{"./Object.assign":37,"./PooledClass":38,"./getTextContentAccessor":141}],33:[function(require,module,exports){
+},{"./Object.assign":38,"./PooledClass":39,"./getTextContentAccessor":142}],34:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -27939,8 +30935,7 @@ var HTMLDOMPropertyConfig = {
 
 module.exports = HTMLDOMPropertyConfig;
 
-},{"./DOMProperty":20,"./ExecutionEnvironment":31}],34:[function(require,module,exports){
-(function (process){
+},{"./DOMProperty":21,"./ExecutionEnvironment":32}],35:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -27970,7 +30965,7 @@ var hasReadOnlyValue = {
 };
 
 function _assertSingleLink(input) {
-  ("production" !== process.env.NODE_ENV ? invariant(
+  ("production" !== "development" ? invariant(
     input.props.checkedLink == null || input.props.valueLink == null,
     'Cannot provide a checkedLink and a valueLink. If you want to use ' +
     'checkedLink, you probably don\'t want to use valueLink and vice versa.'
@@ -27978,7 +30973,7 @@ function _assertSingleLink(input) {
 }
 function _assertValueLink(input) {
   _assertSingleLink(input);
-  ("production" !== process.env.NODE_ENV ? invariant(
+  ("production" !== "development" ? invariant(
     input.props.value == null && input.props.onChange == null,
     'Cannot provide a valueLink and a value or onChange event. If you want ' +
     'to use value or onChange, you probably don\'t want to use valueLink.'
@@ -27987,7 +30982,7 @@ function _assertValueLink(input) {
 
 function _assertCheckedLink(input) {
   _assertSingleLink(input);
-  ("production" !== process.env.NODE_ENV ? invariant(
+  ("production" !== "development" ? invariant(
     input.props.checked == null && input.props.onChange == null,
     'Cannot provide a checkedLink and a checked property or onChange event. ' +
     'If you want to use checked or onChange, you probably don\'t want to ' +
@@ -28094,9 +31089,7 @@ var LinkedValueUtils = {
 
 module.exports = LinkedValueUtils;
 
-}).call(this,require('_process'))
-},{"./ReactPropTypes":89,"./invariant":146,"_process":6}],35:[function(require,module,exports){
-(function (process){
+},{"./ReactPropTypes":90,"./invariant":147}],36:[function(require,module,exports){
 /**
  * Copyright 2014-2015, Facebook, Inc.
  * All rights reserved.
@@ -28122,11 +31115,11 @@ function remove(event) {
 
 var LocalEventTrapMixin = {
   trapBubbledEvent:function(topLevelType, handlerBaseName) {
-    ("production" !== process.env.NODE_ENV ? invariant(this.isMounted(), 'Must be mounted to trap events') : invariant(this.isMounted()));
+    ("production" !== "development" ? invariant(this.isMounted(), 'Must be mounted to trap events') : invariant(this.isMounted()));
     // If a component renders to null or if another component fatals and causes
     // the state of the tree to be corrupted, `node` here can be null.
     var node = this.getDOMNode();
-    ("production" !== process.env.NODE_ENV ? invariant(
+    ("production" !== "development" ? invariant(
       node,
       'LocalEventTrapMixin.trapBubbledEvent(...): Requires node to be rendered.'
     ) : invariant(node));
@@ -28151,8 +31144,7 @@ var LocalEventTrapMixin = {
 
 module.exports = LocalEventTrapMixin;
 
-}).call(this,require('_process'))
-},{"./ReactBrowserEventEmitter":41,"./accumulateInto":116,"./forEachAccumulated":131,"./invariant":146,"_process":6}],36:[function(require,module,exports){
+},{"./ReactBrowserEventEmitter":42,"./accumulateInto":117,"./forEachAccumulated":132,"./invariant":147}],37:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -28210,7 +31202,7 @@ var MobileSafariClickEventPlugin = {
 
 module.exports = MobileSafariClickEventPlugin;
 
-},{"./EventConstants":25,"./emptyFunction":125}],37:[function(require,module,exports){
+},{"./EventConstants":26,"./emptyFunction":126}],38:[function(require,module,exports){
 /**
  * Copyright 2014-2015, Facebook, Inc.
  * All rights reserved.
@@ -28259,8 +31251,7 @@ function assign(target, sources) {
 
 module.exports = assign;
 
-},{}],38:[function(require,module,exports){
-(function (process){
+},{}],39:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -28329,7 +31320,7 @@ var fiveArgumentPooler = function(a1, a2, a3, a4, a5) {
 
 var standardReleaser = function(instance) {
   var Klass = this;
-  ("production" !== process.env.NODE_ENV ? invariant(
+  ("production" !== "development" ? invariant(
     instance instanceof Klass,
     'Trying to release an instance into a pool of a different type.'
   ) : invariant(instance instanceof Klass));
@@ -28374,9 +31365,7 @@ var PooledClass = {
 
 module.exports = PooledClass;
 
-}).call(this,require('_process'))
-},{"./invariant":146,"_process":6}],39:[function(require,module,exports){
-(function (process){
+},{"./invariant":147}],40:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -28420,7 +31409,7 @@ var createElement = ReactElement.createElement;
 var createFactory = ReactElement.createFactory;
 var cloneElement = ReactElement.cloneElement;
 
-if ("production" !== process.env.NODE_ENV) {
+if ("production" !== "development") {
   createElement = ReactElementValidator.createElement;
   createFactory = ReactElementValidator.createFactory;
   cloneElement = ReactElementValidator.cloneElement;
@@ -28477,7 +31466,7 @@ if (
   });
 }
 
-if ("production" !== process.env.NODE_ENV) {
+if ("production" !== "development") {
   var ExecutionEnvironment = require("./ExecutionEnvironment");
   if (ExecutionEnvironment.canUseDOM && window.top === window.self) {
 
@@ -28526,8 +31515,7 @@ React.version = '0.13.3';
 
 module.exports = React;
 
-}).call(this,require('_process'))
-},{"./EventPluginUtils":29,"./ExecutionEnvironment":31,"./Object.assign":37,"./ReactChildren":43,"./ReactClass":44,"./ReactComponent":45,"./ReactContext":49,"./ReactCurrentOwner":50,"./ReactDOM":51,"./ReactDOMTextComponent":62,"./ReactDefaultInjection":65,"./ReactElement":68,"./ReactElementValidator":69,"./ReactInstanceHandles":77,"./ReactMount":81,"./ReactPerf":86,"./ReactPropTypes":89,"./ReactReconciler":92,"./ReactServerRendering":95,"./findDOMNode":128,"./onlyChild":155,"_process":6}],40:[function(require,module,exports){
+},{"./EventPluginUtils":30,"./ExecutionEnvironment":32,"./Object.assign":38,"./ReactChildren":44,"./ReactClass":45,"./ReactComponent":46,"./ReactContext":50,"./ReactCurrentOwner":51,"./ReactDOM":52,"./ReactDOMTextComponent":63,"./ReactDefaultInjection":66,"./ReactElement":69,"./ReactElementValidator":70,"./ReactInstanceHandles":78,"./ReactMount":82,"./ReactPerf":87,"./ReactPropTypes":90,"./ReactReconciler":93,"./ReactServerRendering":96,"./findDOMNode":129,"./onlyChild":156}],41:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -28558,7 +31546,7 @@ var ReactBrowserComponentMixin = {
 
 module.exports = ReactBrowserComponentMixin;
 
-},{"./findDOMNode":128}],41:[function(require,module,exports){
+},{"./findDOMNode":129}],42:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -28911,7 +31899,7 @@ var ReactBrowserEventEmitter = assign({}, ReactEventEmitterMixin, {
 
 module.exports = ReactBrowserEventEmitter;
 
-},{"./EventConstants":25,"./EventPluginHub":27,"./EventPluginRegistry":28,"./Object.assign":37,"./ReactEventEmitterMixin":72,"./ViewportMetrics":115,"./isEventSupported":147}],42:[function(require,module,exports){
+},{"./EventConstants":26,"./EventPluginHub":28,"./EventPluginRegistry":29,"./Object.assign":38,"./ReactEventEmitterMixin":73,"./ViewportMetrics":116,"./isEventSupported":148}],43:[function(require,module,exports){
 /**
  * Copyright 2014-2015, Facebook, Inc.
  * All rights reserved.
@@ -29038,8 +32026,7 @@ var ReactChildReconciler = {
 
 module.exports = ReactChildReconciler;
 
-},{"./ReactReconciler":92,"./flattenChildren":129,"./instantiateReactComponent":145,"./shouldUpdateReactComponent":162}],43:[function(require,module,exports){
-(function (process){
+},{"./ReactReconciler":93,"./flattenChildren":130,"./instantiateReactComponent":146,"./shouldUpdateReactComponent":163}],44:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -29124,8 +32111,8 @@ function mapSingleChildIntoContext(traverseContext, child, name, i) {
   var mapResult = mapBookKeeping.mapResult;
 
   var keyUnique = !mapResult.hasOwnProperty(name);
-  if ("production" !== process.env.NODE_ENV) {
-    ("production" !== process.env.NODE_ENV ? warning(
+  if ("production" !== "development") {
+    ("production" !== "development" ? warning(
       keyUnique,
       'ReactChildren.map(...): Encountered two children with the same key, ' +
       '`%s`. Child keys must be unique; when two children share a key, only ' +
@@ -29190,9 +32177,7 @@ var ReactChildren = {
 
 module.exports = ReactChildren;
 
-}).call(this,require('_process'))
-},{"./PooledClass":38,"./ReactFragment":74,"./traverseAllChildren":164,"./warning":165,"_process":6}],44:[function(require,module,exports){
-(function (process){
+},{"./PooledClass":39,"./ReactFragment":75,"./traverseAllChildren":165,"./warning":166}],45:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -29522,7 +32507,7 @@ var RESERVED_SPEC_KEYS = {
     }
   },
   childContextTypes: function(Constructor, childContextTypes) {
-    if ("production" !== process.env.NODE_ENV) {
+    if ("production" !== "development") {
       validateTypeDef(
         Constructor,
         childContextTypes,
@@ -29536,7 +32521,7 @@ var RESERVED_SPEC_KEYS = {
     );
   },
   contextTypes: function(Constructor, contextTypes) {
-    if ("production" !== process.env.NODE_ENV) {
+    if ("production" !== "development") {
       validateTypeDef(
         Constructor,
         contextTypes,
@@ -29564,7 +32549,7 @@ var RESERVED_SPEC_KEYS = {
     }
   },
   propTypes: function(Constructor, propTypes) {
-    if ("production" !== process.env.NODE_ENV) {
+    if ("production" !== "development") {
       validateTypeDef(
         Constructor,
         propTypes,
@@ -29587,7 +32572,7 @@ function validateTypeDef(Constructor, typeDef, location) {
     if (typeDef.hasOwnProperty(propName)) {
       // use a warning instead of an invariant so components
       // don't show up in prod but not in __DEV__
-      ("production" !== process.env.NODE_ENV ? warning(
+      ("production" !== "development" ? warning(
         typeof typeDef[propName] === 'function',
         '%s: %s type `%s` is invalid; it must be a function, usually from ' +
         'React.PropTypes.',
@@ -29606,7 +32591,7 @@ function validateMethodOverride(proto, name) {
 
   // Disallow overriding of base class methods unless explicitly allowed.
   if (ReactClassMixin.hasOwnProperty(name)) {
-    ("production" !== process.env.NODE_ENV ? invariant(
+    ("production" !== "development" ? invariant(
       specPolicy === SpecPolicy.OVERRIDE_BASE,
       'ReactClassInterface: You are attempting to override ' +
       '`%s` from your class specification. Ensure that your method names ' +
@@ -29617,7 +32602,7 @@ function validateMethodOverride(proto, name) {
 
   // Disallow defining methods more than once unless explicitly allowed.
   if (proto.hasOwnProperty(name)) {
-    ("production" !== process.env.NODE_ENV ? invariant(
+    ("production" !== "development" ? invariant(
       specPolicy === SpecPolicy.DEFINE_MANY ||
       specPolicy === SpecPolicy.DEFINE_MANY_MERGED,
       'ReactClassInterface: You are attempting to define ' +
@@ -29638,12 +32623,12 @@ function mixSpecIntoComponent(Constructor, spec) {
     return;
   }
 
-  ("production" !== process.env.NODE_ENV ? invariant(
+  ("production" !== "development" ? invariant(
     typeof spec !== 'function',
     'ReactClass: You\'re attempting to ' +
     'use a component class as a mixin. Instead, just use a regular object.'
   ) : invariant(typeof spec !== 'function'));
-  ("production" !== process.env.NODE_ENV ? invariant(
+  ("production" !== "development" ? invariant(
     !ReactElement.isValidElement(spec),
     'ReactClass: You\'re attempting to ' +
     'use a component as a mixin. Instead, just use a regular object.'
@@ -29700,7 +32685,7 @@ function mixSpecIntoComponent(Constructor, spec) {
           var specPolicy = ReactClassInterface[name];
 
           // These cases should already be caught by validateMethodOverride
-          ("production" !== process.env.NODE_ENV ? invariant(
+          ("production" !== "development" ? invariant(
             isReactClassMethod && (
               (specPolicy === SpecPolicy.DEFINE_MANY_MERGED || specPolicy === SpecPolicy.DEFINE_MANY)
             ),
@@ -29721,7 +32706,7 @@ function mixSpecIntoComponent(Constructor, spec) {
           }
         } else {
           proto[name] = property;
-          if ("production" !== process.env.NODE_ENV) {
+          if ("production" !== "development") {
             // Add verbose displayName to the function, which helps when looking
             // at profiling tools.
             if (typeof property === 'function' && spec.displayName) {
@@ -29745,7 +32730,7 @@ function mixStaticSpecIntoComponent(Constructor, statics) {
     }
 
     var isReserved = name in RESERVED_SPEC_KEYS;
-    ("production" !== process.env.NODE_ENV ? invariant(
+    ("production" !== "development" ? invariant(
       !isReserved,
       'ReactClass: You are attempting to define a reserved ' +
       'property, `%s`, that shouldn\'t be on the "statics" key. Define it ' +
@@ -29755,7 +32740,7 @@ function mixStaticSpecIntoComponent(Constructor, statics) {
     ) : invariant(!isReserved));
 
     var isInherited = name in Constructor;
-    ("production" !== process.env.NODE_ENV ? invariant(
+    ("production" !== "development" ? invariant(
       !isInherited,
       'ReactClass: You are attempting to define ' +
       '`%s` on your component more than once. This conflict may be ' +
@@ -29774,14 +32759,14 @@ function mixStaticSpecIntoComponent(Constructor, statics) {
  * @return {object} one after it has been mutated to contain everything in two.
  */
 function mergeIntoWithNoDuplicateKeys(one, two) {
-  ("production" !== process.env.NODE_ENV ? invariant(
+  ("production" !== "development" ? invariant(
     one && two && typeof one === 'object' && typeof two === 'object',
     'mergeIntoWithNoDuplicateKeys(): Cannot merge non-objects.'
   ) : invariant(one && two && typeof one === 'object' && typeof two === 'object'));
 
   for (var key in two) {
     if (two.hasOwnProperty(key)) {
-      ("production" !== process.env.NODE_ENV ? invariant(
+      ("production" !== "development" ? invariant(
         one[key] === undefined,
         'mergeIntoWithNoDuplicateKeys(): ' +
         'Tried to merge two objects with the same key: `%s`. This conflict ' +
@@ -29844,7 +32829,7 @@ function createChainedFunction(one, two) {
  */
 function bindAutoBindMethod(component, method) {
   var boundMethod = method.bind(component);
-  if ("production" !== process.env.NODE_ENV) {
+  if ("production" !== "development") {
     boundMethod.__reactBoundContext = component;
     boundMethod.__reactBoundMethod = method;
     boundMethod.__reactBoundArguments = null;
@@ -29856,14 +32841,14 @@ function bindAutoBindMethod(component, method) {
       // ignore the value of "this" that the user is trying to use, so
       // let's warn.
       if (newThis !== component && newThis !== null) {
-        ("production" !== process.env.NODE_ENV ? warning(
+        ("production" !== "development" ? warning(
           false,
           'bind(): React component methods may only be bound to the ' +
           'component instance. See %s',
           componentName
         ) : null);
       } else if (!args.length) {
-        ("production" !== process.env.NODE_ENV ? warning(
+        ("production" !== "development" ? warning(
           false,
           'bind(): You are binding a component method to the component. ' +
           'React does this for you automatically in a high-performance ' +
@@ -29907,7 +32892,7 @@ var typeDeprecationDescriptor = {
   enumerable: false,
   get: function() {
     var displayName = this.displayName || this.name || 'Component';
-    ("production" !== process.env.NODE_ENV ? warning(
+    ("production" !== "development" ? warning(
       false,
       '%s.type is deprecated. Use %s directly to access the class.',
       displayName,
@@ -29944,10 +32929,10 @@ var ReactClassMixin = {
    * @final
    */
   isMounted: function() {
-    if ("production" !== process.env.NODE_ENV) {
+    if ("production" !== "development") {
       var owner = ReactCurrentOwner.current;
       if (owner !== null) {
-        ("production" !== process.env.NODE_ENV ? warning(
+        ("production" !== "development" ? warning(
           owner._warnedAboutRefsInRender,
           '%s is accessing isMounted inside its render() function. ' +
           'render() should be a pure function of props and state. It should ' +
@@ -30025,8 +33010,8 @@ var ReactClass = {
       // This constructor is overridden by mocks. The argument is used
       // by mocks to assert on what gets mounted.
 
-      if ("production" !== process.env.NODE_ENV) {
-        ("production" !== process.env.NODE_ENV ? warning(
+      if ("production" !== "development") {
+        ("production" !== "development" ? warning(
           this instanceof Constructor,
           'Something is calling a React component directly. Use a factory or ' +
           'JSX instead. See: https://fb.me/react-legacyfactory'
@@ -30046,7 +33031,7 @@ var ReactClass = {
       // getInitialState and componentWillMount methods for initialization.
 
       var initialState = this.getInitialState ? this.getInitialState() : null;
-      if ("production" !== process.env.NODE_ENV) {
+      if ("production" !== "development") {
         // We allow auto-mocks to proceed as if they're returning null.
         if (typeof initialState === 'undefined' &&
             this.getInitialState._isMockFunction) {
@@ -30055,7 +33040,7 @@ var ReactClass = {
           initialState = null;
         }
       }
-      ("production" !== process.env.NODE_ENV ? invariant(
+      ("production" !== "development" ? invariant(
         typeof initialState === 'object' && !Array.isArray(initialState),
         '%s.getInitialState(): must return an object or null',
         Constructor.displayName || 'ReactCompositeComponent'
@@ -30077,7 +33062,7 @@ var ReactClass = {
       Constructor.defaultProps = Constructor.getDefaultProps();
     }
 
-    if ("production" !== process.env.NODE_ENV) {
+    if ("production" !== "development") {
       // This is a tag to indicate that the use of these method names is ok,
       // since it's used with createClass. If it's not, then it's likely a
       // mistake so we'll warn you to use the static property, property
@@ -30090,13 +33075,13 @@ var ReactClass = {
       }
     }
 
-    ("production" !== process.env.NODE_ENV ? invariant(
+    ("production" !== "development" ? invariant(
       Constructor.prototype.render,
       'createClass(...): Class specification must implement a `render` method.'
     ) : invariant(Constructor.prototype.render));
 
-    if ("production" !== process.env.NODE_ENV) {
-      ("production" !== process.env.NODE_ENV ? warning(
+    if ("production" !== "development") {
+      ("production" !== "development" ? warning(
         !Constructor.prototype.componentShouldUpdate,
         '%s has a method called ' +
         'componentShouldUpdate(). Did you mean shouldComponentUpdate()? ' +
@@ -30115,7 +33100,7 @@ var ReactClass = {
 
     // Legacy hook
     Constructor.type = Constructor;
-    if ("production" !== process.env.NODE_ENV) {
+    if ("production" !== "development") {
       try {
         Object.defineProperty(Constructor, 'type', typeDeprecationDescriptor);
       } catch (x) {
@@ -30136,9 +33121,7 @@ var ReactClass = {
 
 module.exports = ReactClass;
 
-}).call(this,require('_process'))
-},{"./Object.assign":37,"./ReactComponent":45,"./ReactCurrentOwner":50,"./ReactElement":68,"./ReactErrorUtils":71,"./ReactInstanceMap":78,"./ReactLifeCycle":79,"./ReactPropTypeLocationNames":87,"./ReactPropTypeLocations":88,"./ReactUpdateQueue":97,"./invariant":146,"./keyMirror":151,"./keyOf":152,"./warning":165,"_process":6}],45:[function(require,module,exports){
-(function (process){
+},{"./Object.assign":38,"./ReactComponent":46,"./ReactCurrentOwner":51,"./ReactElement":69,"./ReactErrorUtils":72,"./ReactInstanceMap":79,"./ReactLifeCycle":80,"./ReactPropTypeLocationNames":88,"./ReactPropTypeLocations":89,"./ReactUpdateQueue":98,"./invariant":147,"./keyMirror":152,"./keyOf":153,"./warning":166}],46:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -30191,7 +33174,7 @@ function ReactComponent(props, context) {
  * @protected
  */
 ReactComponent.prototype.setState = function(partialState, callback) {
-  ("production" !== process.env.NODE_ENV ? invariant(
+  ("production" !== "development" ? invariant(
     typeof partialState === 'object' ||
     typeof partialState === 'function' ||
     partialState == null,
@@ -30200,8 +33183,8 @@ ReactComponent.prototype.setState = function(partialState, callback) {
   ) : invariant(typeof partialState === 'object' ||
   typeof partialState === 'function' ||
   partialState == null));
-  if ("production" !== process.env.NODE_ENV) {
-    ("production" !== process.env.NODE_ENV ? warning(
+  if ("production" !== "development") {
+    ("production" !== "development" ? warning(
       partialState != null,
       'setState(...): You passed an undefined or null state object; ' +
       'instead, use forceUpdate().'
@@ -30239,7 +33222,7 @@ ReactComponent.prototype.forceUpdate = function(callback) {
  * we would like to deprecate them, we're not going to move them over to this
  * modern base class. Instead, we define a getter that warns if it's accessed.
  */
-if ("production" !== process.env.NODE_ENV) {
+if ("production" !== "development") {
   var deprecatedAPIs = {
     getDOMNode: [
       'getDOMNode',
@@ -30268,7 +33251,7 @@ if ("production" !== process.env.NODE_ENV) {
     try {
       Object.defineProperty(ReactComponent.prototype, methodName, {
         get: function() {
-          ("production" !== process.env.NODE_ENV ? warning(
+          ("production" !== "development" ? warning(
             false,
             '%s(...) is deprecated in plain JavaScript React classes. %s',
             info[0],
@@ -30290,8 +33273,7 @@ if ("production" !== process.env.NODE_ENV) {
 
 module.exports = ReactComponent;
 
-}).call(this,require('_process'))
-},{"./ReactUpdateQueue":97,"./invariant":146,"./warning":165,"_process":6}],46:[function(require,module,exports){
+},{"./ReactUpdateQueue":98,"./invariant":147,"./warning":166}],47:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -30338,8 +33320,7 @@ var ReactComponentBrowserEnvironment = {
 
 module.exports = ReactComponentBrowserEnvironment;
 
-},{"./ReactDOMIDOperations":55,"./ReactMount":81}],47:[function(require,module,exports){
-(function (process){
+},{"./ReactDOMIDOperations":56,"./ReactMount":82}],48:[function(require,module,exports){
 /**
  * Copyright 2014-2015, Facebook, Inc.
  * All rights reserved.
@@ -30380,7 +33361,7 @@ var ReactComponentEnvironment = {
 
   injection: {
     injectEnvironment: function(environment) {
-      ("production" !== process.env.NODE_ENV ? invariant(
+      ("production" !== "development" ? invariant(
         !injected,
         'ReactCompositeComponent: injectEnvironment() can only be called once.'
       ) : invariant(!injected));
@@ -30398,9 +33379,7 @@ var ReactComponentEnvironment = {
 
 module.exports = ReactComponentEnvironment;
 
-}).call(this,require('_process'))
-},{"./invariant":146,"_process":6}],48:[function(require,module,exports){
-(function (process){
+},{"./invariant":147}],49:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -30537,10 +33516,10 @@ var ReactCompositeComponentMixin = {
     // Initialize the public class
     var inst = new Component(publicProps, publicContext);
 
-    if ("production" !== process.env.NODE_ENV) {
+    if ("production" !== "development") {
       // This will throw later in _renderValidatedComponent, but add an early
       // warning now to help debugging
-      ("production" !== process.env.NODE_ENV ? warning(
+      ("production" !== "development" ? warning(
         inst.render != null,
         '%s(...): No `render` method found on the returned component ' +
         'instance: you may have forgotten to define `render` in your ' +
@@ -30561,15 +33540,15 @@ var ReactCompositeComponentMixin = {
     // Store a reference from the instance back to the internal representation
     ReactInstanceMap.set(inst, this);
 
-    if ("production" !== process.env.NODE_ENV) {
+    if ("production" !== "development") {
       this._warnIfContextsDiffer(this._currentElement._context, context);
     }
 
-    if ("production" !== process.env.NODE_ENV) {
+    if ("production" !== "development") {
       // Since plain JS classes are defined without any special initialization
       // logic, we can not catch common errors early. Therefore, we have to
       // catch them here, at initialization time, instead.
-      ("production" !== process.env.NODE_ENV ? warning(
+      ("production" !== "development" ? warning(
         !inst.getInitialState ||
         inst.getInitialState.isReactClassApproved,
         'getInitialState was defined on %s, a plain JavaScript class. ' +
@@ -30577,7 +33556,7 @@ var ReactCompositeComponentMixin = {
         'Did you mean to define a state property instead?',
         this.getName() || 'a component'
       ) : null);
-      ("production" !== process.env.NODE_ENV ? warning(
+      ("production" !== "development" ? warning(
         !inst.getDefaultProps ||
         inst.getDefaultProps.isReactClassApproved,
         'getDefaultProps was defined on %s, a plain JavaScript class. ' +
@@ -30585,19 +33564,19 @@ var ReactCompositeComponentMixin = {
         'Use a static property to define defaultProps instead.',
         this.getName() || 'a component'
       ) : null);
-      ("production" !== process.env.NODE_ENV ? warning(
+      ("production" !== "development" ? warning(
         !inst.propTypes,
         'propTypes was defined as an instance property on %s. Use a static ' +
         'property to define propTypes instead.',
         this.getName() || 'a component'
       ) : null);
-      ("production" !== process.env.NODE_ENV ? warning(
+      ("production" !== "development" ? warning(
         !inst.contextTypes,
         'contextTypes was defined as an instance property on %s. Use a ' +
         'static property to define contextTypes instead.',
         this.getName() || 'a component'
       ) : null);
-      ("production" !== process.env.NODE_ENV ? warning(
+      ("production" !== "development" ? warning(
         typeof inst.componentShouldUpdate !== 'function',
         '%s has a method called ' +
         'componentShouldUpdate(). Did you mean shouldComponentUpdate()? ' +
@@ -30611,7 +33590,7 @@ var ReactCompositeComponentMixin = {
     if (initialState === undefined) {
       inst.state = initialState = null;
     }
-    ("production" !== process.env.NODE_ENV ? invariant(
+    ("production" !== "development" ? invariant(
       typeof initialState === 'object' && !Array.isArray(initialState),
       '%s.state: must be set to an object or null',
       this.getName() || 'ReactCompositeComponent'
@@ -30761,7 +33740,7 @@ var ReactCompositeComponentMixin = {
    */
   _processContext: function(context) {
     var maskedContext = this._maskContext(context);
-    if ("production" !== process.env.NODE_ENV) {
+    if ("production" !== "development") {
       var Component = ReactNativeComponent.getComponentClassForElement(
         this._currentElement
       );
@@ -30785,13 +33764,13 @@ var ReactCompositeComponentMixin = {
     var inst = this._instance;
     var childContext = inst.getChildContext && inst.getChildContext();
     if (childContext) {
-      ("production" !== process.env.NODE_ENV ? invariant(
+      ("production" !== "development" ? invariant(
         typeof inst.constructor.childContextTypes === 'object',
         '%s.getChildContext(): childContextTypes must be defined in order to ' +
         'use getChildContext().',
         this.getName() || 'ReactCompositeComponent'
       ) : invariant(typeof inst.constructor.childContextTypes === 'object'));
-      if ("production" !== process.env.NODE_ENV) {
+      if ("production" !== "development") {
         this._checkPropTypes(
           inst.constructor.childContextTypes,
           childContext,
@@ -30799,7 +33778,7 @@ var ReactCompositeComponentMixin = {
         );
       }
       for (var name in childContext) {
-        ("production" !== process.env.NODE_ENV ? invariant(
+        ("production" !== "development" ? invariant(
           name in inst.constructor.childContextTypes,
           '%s.getChildContext(): key "%s" is not defined in childContextTypes.',
           this.getName() || 'ReactCompositeComponent',
@@ -30828,7 +33807,7 @@ var ReactCompositeComponentMixin = {
    * @private
    */
   _processProps: function(newProps) {
-    if ("production" !== process.env.NODE_ENV) {
+    if ("production" !== "development") {
       var Component = ReactNativeComponent.getComponentClassForElement(
         this._currentElement
       );
@@ -30861,7 +33840,7 @@ var ReactCompositeComponentMixin = {
         try {
           // This is intentionally an invariant that gets caught. It's the same
           // behavior as without this statement except with a better message.
-          ("production" !== process.env.NODE_ENV ? invariant(
+          ("production" !== "development" ? invariant(
             typeof propTypes[propName] === 'function',
             '%s: %s type `%s` is invalid; it must be a function, usually ' +
             'from React.PropTypes.',
@@ -30881,14 +33860,14 @@ var ReactCompositeComponentMixin = {
 
           if (location === ReactPropTypeLocations.prop) {
             // Preface gives us something to blacklist in warning module
-            ("production" !== process.env.NODE_ENV ? warning(
+            ("production" !== "development" ? warning(
               false,
               'Failed Composite propType: %s%s',
               error.message,
               addendum
             ) : null);
           } else {
-            ("production" !== process.env.NODE_ENV ? warning(
+            ("production" !== "development" ? warning(
               false,
               'Failed Context Types: %s%s',
               error.message,
@@ -30933,7 +33912,7 @@ var ReactCompositeComponentMixin = {
     }
 
     if (this._pendingStateQueue !== null || this._pendingForceUpdate) {
-      if ("production" !== process.env.NODE_ENV) {
+      if ("production" !== "development") {
         ReactElementValidator.checkAndWarnForMutatedProps(
           this._currentElement
         );
@@ -30960,7 +33939,7 @@ var ReactCompositeComponentMixin = {
     var displayName = this.getName() || 'ReactCompositeComponent';
     for (var i = 0; i < parentKeys.length; i++) {
       var key = parentKeys[i];
-      ("production" !== process.env.NODE_ENV ? warning(
+      ("production" !== "development" ? warning(
         ownerBasedContext[key] === parentBasedContext[key],
         'owner-based and parent-based contexts differ '  +
         '(values: `%s` vs `%s`) for key (%s) while mounting %s ' +
@@ -31005,7 +33984,7 @@ var ReactCompositeComponentMixin = {
       nextContext = this._processContext(nextParentElement._context);
       nextProps = this._processProps(nextParentElement.props);
 
-      if ("production" !== process.env.NODE_ENV) {
+      if ("production" !== "development") {
         if (nextUnmaskedContext != null) {
           this._warnIfContextsDiffer(
             nextParentElement._context,
@@ -31030,8 +34009,8 @@ var ReactCompositeComponentMixin = {
       !inst.shouldComponentUpdate ||
       inst.shouldComponentUpdate(nextProps, nextState, nextContext);
 
-    if ("production" !== process.env.NODE_ENV) {
-      ("production" !== process.env.NODE_ENV ? warning(
+    if ("production" !== "development") {
+      ("production" !== "development" ? warning(
         typeof shouldUpdate !== 'undefined',
         '%s.shouldComponentUpdate(): Returned undefined instead of a ' +
         'boolean value. Make sure to return true or false.',
@@ -31190,7 +34169,7 @@ var ReactCompositeComponentMixin = {
   _renderValidatedComponentWithoutOwnerOrContext: function() {
     var inst = this._instance;
     var renderedComponent = inst.render();
-    if ("production" !== process.env.NODE_ENV) {
+    if ("production" !== "development") {
       // We allow auto-mocks to proceed as if they're returning null.
       if (typeof renderedComponent === 'undefined' &&
           inst.render._isMockFunction) {
@@ -31221,7 +34200,7 @@ var ReactCompositeComponentMixin = {
       ReactContext.current = previousContext;
       ReactCurrentOwner.current = null;
     }
-    ("production" !== process.env.NODE_ENV ? invariant(
+    ("production" !== "development" ? invariant(
       // TODO: An `isValidNode` function would probably be more appropriate
       renderedComponent === null || renderedComponent === false ||
       ReactElement.isValidElement(renderedComponent),
@@ -31311,9 +34290,7 @@ var ReactCompositeComponent = {
 
 module.exports = ReactCompositeComponent;
 
-}).call(this,require('_process'))
-},{"./Object.assign":37,"./ReactComponentEnvironment":47,"./ReactContext":49,"./ReactCurrentOwner":50,"./ReactElement":68,"./ReactElementValidator":69,"./ReactInstanceMap":78,"./ReactLifeCycle":79,"./ReactNativeComponent":84,"./ReactPerf":86,"./ReactPropTypeLocationNames":87,"./ReactPropTypeLocations":88,"./ReactReconciler":92,"./ReactUpdates":98,"./emptyObject":126,"./invariant":146,"./shouldUpdateReactComponent":162,"./warning":165,"_process":6}],49:[function(require,module,exports){
-(function (process){
+},{"./Object.assign":38,"./ReactComponentEnvironment":48,"./ReactContext":50,"./ReactCurrentOwner":51,"./ReactElement":69,"./ReactElementValidator":70,"./ReactInstanceMap":79,"./ReactLifeCycle":80,"./ReactNativeComponent":85,"./ReactPerf":87,"./ReactPropTypeLocationNames":88,"./ReactPropTypeLocations":89,"./ReactReconciler":93,"./ReactUpdates":99,"./emptyObject":127,"./invariant":147,"./shouldUpdateReactComponent":163,"./warning":166}],50:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -31364,8 +34341,8 @@ var ReactContext = {
    * @return {ReactComponent|array<ReactComponent>}
    */
   withContext: function(newContext, scopedCallback) {
-    if ("production" !== process.env.NODE_ENV) {
-      ("production" !== process.env.NODE_ENV ? warning(
+    if ("production" !== "development") {
+      ("production" !== "development" ? warning(
         didWarn,
         'withContext is deprecated and will be removed in a future version. ' +
         'Use a wrapper component with getChildContext instead.'
@@ -31389,8 +34366,7 @@ var ReactContext = {
 
 module.exports = ReactContext;
 
-}).call(this,require('_process'))
-},{"./Object.assign":37,"./emptyObject":126,"./warning":165,"_process":6}],50:[function(require,module,exports){
+},{"./Object.assign":38,"./emptyObject":127,"./warning":166}],51:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -31424,8 +34400,7 @@ var ReactCurrentOwner = {
 
 module.exports = ReactCurrentOwner;
 
-},{}],51:[function(require,module,exports){
-(function (process){
+},{}],52:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -31452,7 +34427,7 @@ var mapObject = require("./mapObject");
  * @private
  */
 function createDOMFactory(tag) {
-  if ("production" !== process.env.NODE_ENV) {
+  if ("production" !== "development") {
     return ReactElementValidator.createFactory(tag);
   }
   return ReactElement.createFactory(tag);
@@ -31602,8 +34577,7 @@ var ReactDOM = mapObject({
 
 module.exports = ReactDOM;
 
-}).call(this,require('_process'))
-},{"./ReactElement":68,"./ReactElementValidator":69,"./mapObject":153,"_process":6}],52:[function(require,module,exports){
+},{"./ReactElement":69,"./ReactElementValidator":70,"./mapObject":154}],53:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -31667,8 +34641,7 @@ var ReactDOMButton = ReactClass.createClass({
 
 module.exports = ReactDOMButton;
 
-},{"./AutoFocusMixin":12,"./ReactBrowserComponentMixin":40,"./ReactClass":44,"./ReactElement":68,"./keyMirror":151}],53:[function(require,module,exports){
-(function (process){
+},{"./AutoFocusMixin":13,"./ReactBrowserComponentMixin":41,"./ReactClass":45,"./ReactElement":69,"./keyMirror":152}],54:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -31727,11 +34700,11 @@ function assertValidProps(props) {
   }
   // Note the use of `==` which checks for null or undefined.
   if (props.dangerouslySetInnerHTML != null) {
-    ("production" !== process.env.NODE_ENV ? invariant(
+    ("production" !== "development" ? invariant(
       props.children == null,
       'Can only set one of `children` or `props.dangerouslySetInnerHTML`.'
     ) : invariant(props.children == null));
-    ("production" !== process.env.NODE_ENV ? invariant(
+    ("production" !== "development" ? invariant(
       typeof props.dangerouslySetInnerHTML === 'object' &&
       '__html' in props.dangerouslySetInnerHTML,
       '`props.dangerouslySetInnerHTML` must be in the form `{__html: ...}`. ' +
@@ -31740,13 +34713,13 @@ function assertValidProps(props) {
     ) : invariant(typeof props.dangerouslySetInnerHTML === 'object' &&
     '__html' in props.dangerouslySetInnerHTML));
   }
-  if ("production" !== process.env.NODE_ENV) {
-    ("production" !== process.env.NODE_ENV ? warning(
+  if ("production" !== "development") {
+    ("production" !== "development" ? warning(
       props.innerHTML == null,
       'Directly setting property `innerHTML` is not permitted. ' +
       'For more information, lookup documentation on `dangerouslySetInnerHTML`.'
     ) : null);
-    ("production" !== process.env.NODE_ENV ? warning(
+    ("production" !== "development" ? warning(
       !props.contentEditable || props.children == null,
       'A component is `contentEditable` and contains `children` managed by ' +
       'React. It is now your responsibility to guarantee that none of ' +
@@ -31754,7 +34727,7 @@ function assertValidProps(props) {
       'probably not intentional.'
     ) : null);
   }
-  ("production" !== process.env.NODE_ENV ? invariant(
+  ("production" !== "development" ? invariant(
     props.style == null || typeof props.style === 'object',
     'The `style` prop expects a mapping from style properties to values, ' +
     'not a string. For example, style={{marginRight: spacing + \'em\'}} when ' +
@@ -31763,10 +34736,10 @@ function assertValidProps(props) {
 }
 
 function putListener(id, registrationName, listener, transaction) {
-  if ("production" !== process.env.NODE_ENV) {
+  if ("production" !== "development") {
     // IE8 has no API for event capturing and the `onScroll` event doesn't
     // bubble.
-    ("production" !== process.env.NODE_ENV ? warning(
+    ("production" !== "development" ? warning(
       registrationName !== 'onScroll' || isEventSupported('scroll', true),
       'This browser doesn\'t support the `onScroll` event'
     ) : null);
@@ -31817,7 +34790,7 @@ var hasOwnProperty = {}.hasOwnProperty;
 
 function validateDangerousTag(tag) {
   if (!hasOwnProperty.call(validatedTagCache, tag)) {
-    ("production" !== process.env.NODE_ENV ? invariant(VALID_TAG_REGEX.test(tag), 'Invalid tag: %s', tag) : invariant(VALID_TAG_REGEX.test(tag)));
+    ("production" !== "development" ? invariant(VALID_TAG_REGEX.test(tag), 'Invalid tag: %s', tag) : invariant(VALID_TAG_REGEX.test(tag)));
     validatedTagCache[tag] = true;
   }
 }
@@ -32176,8 +35149,7 @@ ReactDOMComponent.injection = {
 
 module.exports = ReactDOMComponent;
 
-}).call(this,require('_process'))
-},{"./CSSPropertyOperations":15,"./DOMProperty":20,"./DOMPropertyOperations":21,"./Object.assign":37,"./ReactBrowserEventEmitter":41,"./ReactComponentBrowserEnvironment":46,"./ReactMount":81,"./ReactMultiChild":82,"./ReactPerf":86,"./escapeTextContentForBrowser":127,"./invariant":146,"./isEventSupported":147,"./keyOf":152,"./warning":165,"_process":6}],54:[function(require,module,exports){
+},{"./CSSPropertyOperations":16,"./DOMProperty":21,"./DOMPropertyOperations":22,"./Object.assign":38,"./ReactBrowserEventEmitter":42,"./ReactComponentBrowserEnvironment":47,"./ReactMount":82,"./ReactMultiChild":83,"./ReactPerf":87,"./escapeTextContentForBrowser":128,"./invariant":147,"./isEventSupported":148,"./keyOf":153,"./warning":166}],55:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -32226,8 +35198,7 @@ var ReactDOMForm = ReactClass.createClass({
 
 module.exports = ReactDOMForm;
 
-},{"./EventConstants":25,"./LocalEventTrapMixin":35,"./ReactBrowserComponentMixin":40,"./ReactClass":44,"./ReactElement":68}],55:[function(require,module,exports){
-(function (process){
+},{"./EventConstants":26,"./LocalEventTrapMixin":36,"./ReactBrowserComponentMixin":41,"./ReactClass":45,"./ReactElement":69}],56:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -32282,7 +35253,7 @@ var ReactDOMIDOperations = {
    */
   updatePropertyByID: function(id, name, value) {
     var node = ReactMount.getNode(id);
-    ("production" !== process.env.NODE_ENV ? invariant(
+    ("production" !== "development" ? invariant(
       !INVALID_PROPERTY_ERRORS.hasOwnProperty(name),
       'updatePropertyByID(...): %s',
       INVALID_PROPERTY_ERRORS[name]
@@ -32308,7 +35279,7 @@ var ReactDOMIDOperations = {
    */
   deletePropertyByID: function(id, name, value) {
     var node = ReactMount.getNode(id);
-    ("production" !== process.env.NODE_ENV ? invariant(
+    ("production" !== "development" ? invariant(
       !INVALID_PROPERTY_ERRORS.hasOwnProperty(name),
       'updatePropertyByID(...): %s',
       INVALID_PROPERTY_ERRORS[name]
@@ -32393,8 +35364,7 @@ ReactPerf.measureMethods(ReactDOMIDOperations, 'ReactDOMIDOperations', {
 
 module.exports = ReactDOMIDOperations;
 
-}).call(this,require('_process'))
-},{"./CSSPropertyOperations":15,"./DOMChildrenOperations":19,"./DOMPropertyOperations":21,"./ReactMount":81,"./ReactPerf":86,"./invariant":146,"./setInnerHTML":159,"_process":6}],56:[function(require,module,exports){
+},{"./CSSPropertyOperations":16,"./DOMChildrenOperations":20,"./DOMPropertyOperations":22,"./ReactMount":82,"./ReactPerf":87,"./invariant":147,"./setInnerHTML":160}],57:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -32439,7 +35409,7 @@ var ReactDOMIframe = ReactClass.createClass({
 
 module.exports = ReactDOMIframe;
 
-},{"./EventConstants":25,"./LocalEventTrapMixin":35,"./ReactBrowserComponentMixin":40,"./ReactClass":44,"./ReactElement":68}],57:[function(require,module,exports){
+},{"./EventConstants":26,"./LocalEventTrapMixin":36,"./ReactBrowserComponentMixin":41,"./ReactClass":45,"./ReactElement":69}],58:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -32485,8 +35455,7 @@ var ReactDOMImg = ReactClass.createClass({
 
 module.exports = ReactDOMImg;
 
-},{"./EventConstants":25,"./LocalEventTrapMixin":35,"./ReactBrowserComponentMixin":40,"./ReactClass":44,"./ReactElement":68}],58:[function(require,module,exports){
-(function (process){
+},{"./EventConstants":26,"./LocalEventTrapMixin":36,"./ReactBrowserComponentMixin":41,"./ReactClass":45,"./ReactElement":69}],59:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -32636,13 +35605,13 @@ var ReactDOMInput = ReactClass.createClass({
           continue;
         }
         var otherID = ReactMount.getID(otherNode);
-        ("production" !== process.env.NODE_ENV ? invariant(
+        ("production" !== "development" ? invariant(
           otherID,
           'ReactDOMInput: Mixing React and non-React radio inputs with the ' +
           'same `name` is not supported.'
         ) : invariant(otherID));
         var otherInstance = instancesByReactID[otherID];
-        ("production" !== process.env.NODE_ENV ? invariant(
+        ("production" !== "development" ? invariant(
           otherInstance,
           'ReactDOMInput: Unknown radio button ID %s.',
           otherID
@@ -32661,9 +35630,7 @@ var ReactDOMInput = ReactClass.createClass({
 
 module.exports = ReactDOMInput;
 
-}).call(this,require('_process'))
-},{"./AutoFocusMixin":12,"./DOMPropertyOperations":21,"./LinkedValueUtils":34,"./Object.assign":37,"./ReactBrowserComponentMixin":40,"./ReactClass":44,"./ReactElement":68,"./ReactMount":81,"./ReactUpdates":98,"./invariant":146,"_process":6}],59:[function(require,module,exports){
-(function (process){
+},{"./AutoFocusMixin":13,"./DOMPropertyOperations":22,"./LinkedValueUtils":35,"./Object.assign":38,"./ReactBrowserComponentMixin":41,"./ReactClass":45,"./ReactElement":69,"./ReactMount":82,"./ReactUpdates":99,"./invariant":147}],60:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -32696,8 +35663,8 @@ var ReactDOMOption = ReactClass.createClass({
 
   componentWillMount: function() {
     // TODO (yungsters): Remove support for `selected` in <option>.
-    if ("production" !== process.env.NODE_ENV) {
-      ("production" !== process.env.NODE_ENV ? warning(
+    if ("production" !== "development") {
+      ("production" !== "development" ? warning(
         this.props.selected == null,
         'Use the `defaultValue` or `value` props on <select> instead of ' +
         'setting `selected` on <option>.'
@@ -32713,8 +35680,7 @@ var ReactDOMOption = ReactClass.createClass({
 
 module.exports = ReactDOMOption;
 
-}).call(this,require('_process'))
-},{"./ReactBrowserComponentMixin":40,"./ReactClass":44,"./ReactElement":68,"./warning":165,"_process":6}],60:[function(require,module,exports){
+},{"./ReactBrowserComponentMixin":41,"./ReactClass":45,"./ReactElement":69,"./warning":166}],61:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -32892,7 +35858,7 @@ var ReactDOMSelect = ReactClass.createClass({
 
 module.exports = ReactDOMSelect;
 
-},{"./AutoFocusMixin":12,"./LinkedValueUtils":34,"./Object.assign":37,"./ReactBrowserComponentMixin":40,"./ReactClass":44,"./ReactElement":68,"./ReactUpdates":98}],61:[function(require,module,exports){
+},{"./AutoFocusMixin":13,"./LinkedValueUtils":35,"./Object.assign":38,"./ReactBrowserComponentMixin":41,"./ReactClass":45,"./ReactElement":69,"./ReactUpdates":99}],62:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -33105,7 +36071,7 @@ var ReactDOMSelection = {
 
 module.exports = ReactDOMSelection;
 
-},{"./ExecutionEnvironment":31,"./getNodeForCharacterOffset":139,"./getTextContentAccessor":141}],62:[function(require,module,exports){
+},{"./ExecutionEnvironment":32,"./getNodeForCharacterOffset":140,"./getTextContentAccessor":142}],63:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -33222,8 +36188,7 @@ assign(ReactDOMTextComponent.prototype, {
 
 module.exports = ReactDOMTextComponent;
 
-},{"./DOMPropertyOperations":21,"./Object.assign":37,"./ReactComponentBrowserEnvironment":46,"./ReactDOMComponent":53,"./escapeTextContentForBrowser":127}],63:[function(require,module,exports){
-(function (process){
+},{"./DOMPropertyOperations":22,"./Object.assign":38,"./ReactComponentBrowserEnvironment":47,"./ReactDOMComponent":54,"./escapeTextContentForBrowser":128}],64:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -33285,19 +36250,19 @@ var ReactDOMTextarea = ReactClass.createClass({
     // TODO (yungsters): Remove support for children content in <textarea>.
     var children = this.props.children;
     if (children != null) {
-      if ("production" !== process.env.NODE_ENV) {
-        ("production" !== process.env.NODE_ENV ? warning(
+      if ("production" !== "development") {
+        ("production" !== "development" ? warning(
           false,
           'Use the `defaultValue` or `value` props instead of setting ' +
           'children on <textarea>.'
         ) : null);
       }
-      ("production" !== process.env.NODE_ENV ? invariant(
+      ("production" !== "development" ? invariant(
         defaultValue == null,
         'If you supply `defaultValue` on a <textarea>, do not pass children.'
       ) : invariant(defaultValue == null));
       if (Array.isArray(children)) {
-        ("production" !== process.env.NODE_ENV ? invariant(
+        ("production" !== "development" ? invariant(
           children.length <= 1,
           '<textarea> can only have at most one child.'
         ) : invariant(children.length <= 1));
@@ -33323,7 +36288,7 @@ var ReactDOMTextarea = ReactClass.createClass({
     // Clone `this.props` so we don't mutate the input.
     var props = assign({}, this.props);
 
-    ("production" !== process.env.NODE_ENV ? invariant(
+    ("production" !== "development" ? invariant(
       props.dangerouslySetInnerHTML == null,
       '`dangerouslySetInnerHTML` does not make sense on <textarea>.'
     ) : invariant(props.dangerouslySetInnerHTML == null));
@@ -33361,8 +36326,7 @@ var ReactDOMTextarea = ReactClass.createClass({
 
 module.exports = ReactDOMTextarea;
 
-}).call(this,require('_process'))
-},{"./AutoFocusMixin":12,"./DOMPropertyOperations":21,"./LinkedValueUtils":34,"./Object.assign":37,"./ReactBrowserComponentMixin":40,"./ReactClass":44,"./ReactElement":68,"./ReactUpdates":98,"./invariant":146,"./warning":165,"_process":6}],64:[function(require,module,exports){
+},{"./AutoFocusMixin":13,"./DOMPropertyOperations":22,"./LinkedValueUtils":35,"./Object.assign":38,"./ReactBrowserComponentMixin":41,"./ReactClass":45,"./ReactElement":69,"./ReactUpdates":99,"./invariant":147,"./warning":166}],65:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -33435,8 +36399,7 @@ var ReactDefaultBatchingStrategy = {
 
 module.exports = ReactDefaultBatchingStrategy;
 
-},{"./Object.assign":37,"./ReactUpdates":98,"./Transaction":114,"./emptyFunction":125}],65:[function(require,module,exports){
-(function (process){
+},{"./Object.assign":38,"./ReactUpdates":99,"./Transaction":115,"./emptyFunction":126}],66:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -33580,7 +36543,7 @@ function inject() {
   ReactInjection.Component.injectEnvironment(ReactComponentBrowserEnvironment);
   ReactInjection.DOMComponent.injectIDOperations(ReactDOMIDOperations);
 
-  if ("production" !== process.env.NODE_ENV) {
+  if ("production" !== "development") {
     var url = (ExecutionEnvironment.canUseDOM && window.location.href) || '';
     if ((/[?&]react_perf\b/).test(url)) {
       var ReactDefaultPerf = require("./ReactDefaultPerf");
@@ -33593,8 +36556,7 @@ module.exports = {
   inject: inject
 };
 
-}).call(this,require('_process'))
-},{"./BeforeInputEventPlugin":13,"./ChangeEventPlugin":17,"./ClientReactRootIndex":18,"./DefaultEventPluginOrder":23,"./EnterLeaveEventPlugin":24,"./ExecutionEnvironment":31,"./HTMLDOMPropertyConfig":33,"./MobileSafariClickEventPlugin":36,"./ReactBrowserComponentMixin":40,"./ReactClass":44,"./ReactComponentBrowserEnvironment":46,"./ReactDOMButton":52,"./ReactDOMComponent":53,"./ReactDOMForm":54,"./ReactDOMIDOperations":55,"./ReactDOMIframe":56,"./ReactDOMImg":57,"./ReactDOMInput":58,"./ReactDOMOption":59,"./ReactDOMSelect":60,"./ReactDOMTextComponent":62,"./ReactDOMTextarea":63,"./ReactDefaultBatchingStrategy":64,"./ReactDefaultPerf":66,"./ReactElement":68,"./ReactEventListener":73,"./ReactInjection":75,"./ReactInstanceHandles":77,"./ReactMount":81,"./ReactReconcileTransaction":91,"./SVGDOMPropertyConfig":99,"./SelectEventPlugin":100,"./ServerReactRootIndex":101,"./SimpleEventPlugin":102,"./createFullPageComponent":122,"_process":6}],66:[function(require,module,exports){
+},{"./BeforeInputEventPlugin":14,"./ChangeEventPlugin":18,"./ClientReactRootIndex":19,"./DefaultEventPluginOrder":24,"./EnterLeaveEventPlugin":25,"./ExecutionEnvironment":32,"./HTMLDOMPropertyConfig":34,"./MobileSafariClickEventPlugin":37,"./ReactBrowserComponentMixin":41,"./ReactClass":45,"./ReactComponentBrowserEnvironment":47,"./ReactDOMButton":53,"./ReactDOMComponent":54,"./ReactDOMForm":55,"./ReactDOMIDOperations":56,"./ReactDOMIframe":57,"./ReactDOMImg":58,"./ReactDOMInput":59,"./ReactDOMOption":60,"./ReactDOMSelect":61,"./ReactDOMTextComponent":63,"./ReactDOMTextarea":64,"./ReactDefaultBatchingStrategy":65,"./ReactDefaultPerf":67,"./ReactElement":69,"./ReactEventListener":74,"./ReactInjection":76,"./ReactInstanceHandles":78,"./ReactMount":82,"./ReactReconcileTransaction":92,"./SVGDOMPropertyConfig":100,"./SelectEventPlugin":101,"./ServerReactRootIndex":102,"./SimpleEventPlugin":103,"./createFullPageComponent":123}],67:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -33860,7 +36822,7 @@ var ReactDefaultPerf = {
 
 module.exports = ReactDefaultPerf;
 
-},{"./DOMProperty":20,"./ReactDefaultPerfAnalysis":67,"./ReactMount":81,"./ReactPerf":86,"./performanceNow":157}],67:[function(require,module,exports){
+},{"./DOMProperty":21,"./ReactDefaultPerfAnalysis":68,"./ReactMount":82,"./ReactPerf":87,"./performanceNow":158}],68:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -34066,8 +37028,7 @@ var ReactDefaultPerfAnalysis = {
 
 module.exports = ReactDefaultPerfAnalysis;
 
-},{"./Object.assign":37}],68:[function(require,module,exports){
-(function (process){
+},{"./Object.assign":38}],69:[function(require,module,exports){
 /**
  * Copyright 2014-2015, Facebook, Inc.
  * All rights reserved.
@@ -34113,7 +37074,7 @@ function defineWarningProperty(object, key) {
     },
 
     set: function(value) {
-      ("production" !== process.env.NODE_ENV ? warning(
+      ("production" !== "development" ? warning(
         false,
         'Don\'t set the %s property of the React element. Instead, ' +
         'specify the correct value when initially creating the element.',
@@ -34173,7 +37134,7 @@ var ReactElement = function(type, key, ref, owner, context, props) {
   // through the owner.
   this._context = context;
 
-  if ("production" !== process.env.NODE_ENV) {
+  if ("production" !== "development") {
     // The validation flag and props are currently mutative. We put them on
     // an external backing store so that we can freeze the whole object.
     // This can be replaced with a WeakMap once they are implemented in
@@ -34212,7 +37173,7 @@ ReactElement.prototype = {
   _isReactElement: true
 };
 
-if ("production" !== process.env.NODE_ENV) {
+if ("production" !== "development") {
   defineMutationMembrane(ReactElement.prototype);
 }
 
@@ -34291,7 +37252,7 @@ ReactElement.cloneAndReplaceProps = function(oldElement, newProps) {
     newProps
   );
 
-  if ("production" !== process.env.NODE_ENV) {
+  if ("production" !== "development") {
     // If the key on the original is valid, then the clone is valid
     newElement._store.validated = oldElement._store.validated;
   }
@@ -34373,9 +37334,7 @@ ReactElement.isValidElement = function(object) {
 
 module.exports = ReactElement;
 
-}).call(this,require('_process'))
-},{"./Object.assign":37,"./ReactContext":49,"./ReactCurrentOwner":50,"./warning":165,"_process":6}],69:[function(require,module,exports){
-(function (process){
+},{"./Object.assign":38,"./ReactContext":50,"./ReactCurrentOwner":51,"./warning":166}],70:[function(require,module,exports){
 /**
  * Copyright 2014-2015, Facebook, Inc.
  * All rights reserved.
@@ -34542,7 +37501,7 @@ function warnAndMonitorForKeyUse(message, element, parentType) {
     childOwnerAddendum = (" It was passed a child from " + childOwnerName + ".");
   }
 
-  ("production" !== process.env.NODE_ENV ? warning(
+  ("production" !== "development" ? warning(
     false,
     message + '%s%s See https://fb.me/react-warning-keys for more information.',
     parentOrOwnerAddendum,
@@ -34613,7 +37572,7 @@ function checkPropTypes(componentName, propTypes, props, location) {
       try {
         // This is intentionally an invariant that gets caught. It's the same
         // behavior as without this statement except with a better message.
-        ("production" !== process.env.NODE_ENV ? invariant(
+        ("production" !== "development" ? invariant(
           typeof propTypes[propName] === 'function',
           '%s: %s type `%s` is invalid; it must be a function, usually from ' +
           'React.PropTypes.',
@@ -34631,7 +37590,7 @@ function checkPropTypes(componentName, propTypes, props, location) {
         loggedTypeFailures[error.message] = true;
 
         var addendum = getDeclarationErrorAddendum(this);
-        ("production" !== process.env.NODE_ENV ? warning(false, 'Failed propType: %s%s', error.message, addendum) : null);
+        ("production" !== "development" ? warning(false, 'Failed propType: %s%s', error.message, addendum) : null);
       }
     }
   }
@@ -34666,7 +37625,7 @@ function warnForPropsMutation(propName, element) {
     ownerInfo = ' The element was created by ' + ownerName + '.';
   }
 
-  ("production" !== process.env.NODE_ENV ? warning(
+  ("production" !== "development" ? warning(
     false,
     'Don\'t set .props.%s of the React component%s. Instead, specify the ' +
     'correct value when initially creating the element or use ' +
@@ -34749,7 +37708,7 @@ function validatePropTypes(element) {
     );
   }
   if (typeof componentClass.getDefaultProps === 'function') {
-    ("production" !== process.env.NODE_ENV ? warning(
+    ("production" !== "development" ? warning(
       componentClass.getDefaultProps.isReactClassApproved,
       'getDefaultProps is only used on classic React.createClass ' +
       'definitions. Use a static property named `defaultProps` instead.'
@@ -34764,7 +37723,7 @@ var ReactElementValidator = {
   createElement: function(type, props, children) {
     // We warn in this case but don't throw. We expect the element creation to
     // succeed and there will likely be errors in render.
-    ("production" !== process.env.NODE_ENV ? warning(
+    ("production" !== "development" ? warning(
       type != null,
       'React.createElement: type should not be null or undefined. It should ' +
         'be a string (for DOM elements) or a ReactClass (for composite ' +
@@ -34796,7 +37755,7 @@ var ReactElementValidator = {
     // Legacy hook TODO: Warn if this is accessed
     validatedFactory.type = type;
 
-    if ("production" !== process.env.NODE_ENV) {
+    if ("production" !== "development") {
       try {
         Object.defineProperty(
           validatedFactory,
@@ -34804,7 +37763,7 @@ var ReactElementValidator = {
           {
             enumerable: false,
             get: function() {
-              ("production" !== process.env.NODE_ENV ? warning(
+              ("production" !== "development" ? warning(
                 false,
                 'Factory.type is deprecated. Access the class directly ' +
                 'before passing it to createFactory.'
@@ -34838,9 +37797,7 @@ var ReactElementValidator = {
 
 module.exports = ReactElementValidator;
 
-}).call(this,require('_process'))
-},{"./ReactCurrentOwner":50,"./ReactElement":68,"./ReactFragment":74,"./ReactNativeComponent":84,"./ReactPropTypeLocationNames":87,"./ReactPropTypeLocations":88,"./getIteratorFn":137,"./invariant":146,"./warning":165,"_process":6}],70:[function(require,module,exports){
-(function (process){
+},{"./ReactCurrentOwner":51,"./ReactElement":69,"./ReactFragment":75,"./ReactNativeComponent":85,"./ReactPropTypeLocationNames":88,"./ReactPropTypeLocations":89,"./getIteratorFn":138,"./invariant":147,"./warning":166}],71:[function(require,module,exports){
 /**
  * Copyright 2014-2015, Facebook, Inc.
  * All rights reserved.
@@ -34891,7 +37848,7 @@ ReactEmptyComponentType.prototype.componentWillUnmount = function() {
   deregisterNullComponentID(internalInstance._rootNodeID);
 };
 ReactEmptyComponentType.prototype.render = function() {
-  ("production" !== process.env.NODE_ENV ? invariant(
+  ("production" !== "development" ? invariant(
     component,
     'Trying to return null from a render, but no null placeholder component ' +
     'was injected.'
@@ -34933,8 +37890,7 @@ var ReactEmptyComponent = {
 
 module.exports = ReactEmptyComponent;
 
-}).call(this,require('_process'))
-},{"./ReactElement":68,"./ReactInstanceMap":78,"./invariant":146,"_process":6}],71:[function(require,module,exports){
+},{"./ReactElement":69,"./ReactInstanceMap":79,"./invariant":147}],72:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -34966,7 +37922,7 @@ var ReactErrorUtils = {
 
 module.exports = ReactErrorUtils;
 
-},{}],72:[function(require,module,exports){
+},{}],73:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -35016,7 +37972,7 @@ var ReactEventEmitterMixin = {
 
 module.exports = ReactEventEmitterMixin;
 
-},{"./EventPluginHub":27}],73:[function(require,module,exports){
+},{"./EventPluginHub":28}],74:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -35199,8 +38155,7 @@ var ReactEventListener = {
 
 module.exports = ReactEventListener;
 
-},{"./EventListener":26,"./ExecutionEnvironment":31,"./Object.assign":37,"./PooledClass":38,"./ReactInstanceHandles":77,"./ReactMount":81,"./ReactUpdates":98,"./getEventTarget":136,"./getUnboundedScrollPosition":142}],74:[function(require,module,exports){
-(function (process){
+},{"./EventListener":27,"./ExecutionEnvironment":32,"./Object.assign":38,"./PooledClass":39,"./ReactInstanceHandles":78,"./ReactMount":82,"./ReactUpdates":99,"./getEventTarget":137,"./getUnboundedScrollPosition":143}],75:[function(require,module,exports){
 /**
  * Copyright 2015, Facebook, Inc.
  * All rights reserved.
@@ -35226,7 +38181,7 @@ var warning = require("./warning");
  * create a keyed fragment. The resulting data structure is opaque, for now.
  */
 
-if ("production" !== process.env.NODE_ENV) {
+if ("production" !== "development") {
   var fragmentKey = '_reactFragment';
   var didWarnKey = '_reactDidWarn';
   var canWarnForReactFragment = false;
@@ -35258,7 +38213,7 @@ if ("production" !== process.env.NODE_ENV) {
     Object.defineProperty(obj, key, {
       enumerable: true,
       get: function() {
-        ("production" !== process.env.NODE_ENV ? warning(
+        ("production" !== "development" ? warning(
           this[didWarnKey],
           'A ReactFragment is an opaque type. Accessing any of its ' +
           'properties is deprecated. Pass it to one of the React.Children ' +
@@ -35268,7 +38223,7 @@ if ("production" !== process.env.NODE_ENV) {
         return this[fragmentKey][key];
       },
       set: function(value) {
-        ("production" !== process.env.NODE_ENV ? warning(
+        ("production" !== "development" ? warning(
           this[didWarnKey],
           'A ReactFragment is an immutable opaque type. Mutating its ' +
           'properties is deprecated.'
@@ -35298,9 +38253,9 @@ var ReactFragment = {
   // Wrap a keyed object in an opaque proxy that warns you if you access any
   // of its properties.
   create: function(object) {
-    if ("production" !== process.env.NODE_ENV) {
+    if ("production" !== "development") {
       if (typeof object !== 'object' || !object || Array.isArray(object)) {
-        ("production" !== process.env.NODE_ENV ? warning(
+        ("production" !== "development" ? warning(
           false,
           'React.addons.createFragment only accepts a single object.',
           object
@@ -35308,7 +38263,7 @@ var ReactFragment = {
         return object;
       }
       if (ReactElement.isValidElement(object)) {
-        ("production" !== process.env.NODE_ENV ? warning(
+        ("production" !== "development" ? warning(
           false,
           'React.addons.createFragment does not accept a ReactElement ' +
           'without a wrapper object.'
@@ -35338,10 +38293,10 @@ var ReactFragment = {
   // Extract the original keyed object from the fragment opaque type. Warn if
   // a plain object is passed here.
   extract: function(fragment) {
-    if ("production" !== process.env.NODE_ENV) {
+    if ("production" !== "development") {
       if (canWarnForReactFragment) {
         if (!fragment[fragmentKey]) {
-          ("production" !== process.env.NODE_ENV ? warning(
+          ("production" !== "development" ? warning(
             didWarnForFragment(fragment),
             'Any use of a keyed object should be wrapped in ' +
             'React.addons.createFragment(object) before being passed as a ' +
@@ -35358,7 +38313,7 @@ var ReactFragment = {
   // is a fragment-like object, warn that it should be wrapped. Ignore if we
   // can't determine what kind of object this is.
   extractIfFragment: function(fragment) {
-    if ("production" !== process.env.NODE_ENV) {
+    if ("production" !== "development") {
       if (canWarnForReactFragment) {
         // If it is the opaque type, return the keyed object.
         if (fragment[fragmentKey]) {
@@ -35383,8 +38338,7 @@ var ReactFragment = {
 
 module.exports = ReactFragment;
 
-}).call(this,require('_process'))
-},{"./ReactElement":68,"./warning":165,"_process":6}],75:[function(require,module,exports){
+},{"./ReactElement":69,"./warning":166}],76:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -35426,7 +38380,7 @@ var ReactInjection = {
 
 module.exports = ReactInjection;
 
-},{"./DOMProperty":20,"./EventPluginHub":27,"./ReactBrowserEventEmitter":41,"./ReactClass":44,"./ReactComponentEnvironment":47,"./ReactDOMComponent":53,"./ReactEmptyComponent":70,"./ReactNativeComponent":84,"./ReactPerf":86,"./ReactRootIndex":94,"./ReactUpdates":98}],76:[function(require,module,exports){
+},{"./DOMProperty":21,"./EventPluginHub":28,"./ReactBrowserEventEmitter":42,"./ReactClass":45,"./ReactComponentEnvironment":48,"./ReactDOMComponent":54,"./ReactEmptyComponent":71,"./ReactNativeComponent":85,"./ReactPerf":87,"./ReactRootIndex":95,"./ReactUpdates":99}],77:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -35561,8 +38515,7 @@ var ReactInputSelection = {
 
 module.exports = ReactInputSelection;
 
-},{"./ReactDOMSelection":61,"./containsNode":120,"./focusNode":130,"./getActiveElement":132}],77:[function(require,module,exports){
-(function (process){
+},{"./ReactDOMSelection":62,"./containsNode":121,"./focusNode":131,"./getActiveElement":133}],78:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -35661,13 +38614,13 @@ function getParentID(id) {
  * @private
  */
 function getNextDescendantID(ancestorID, destinationID) {
-  ("production" !== process.env.NODE_ENV ? invariant(
+  ("production" !== "development" ? invariant(
     isValidID(ancestorID) && isValidID(destinationID),
     'getNextDescendantID(%s, %s): Received an invalid React DOM ID.',
     ancestorID,
     destinationID
   ) : invariant(isValidID(ancestorID) && isValidID(destinationID)));
-  ("production" !== process.env.NODE_ENV ? invariant(
+  ("production" !== "development" ? invariant(
     isAncestorIDOf(ancestorID, destinationID),
     'getNextDescendantID(...): React has made an invalid assumption about ' +
     'the DOM hierarchy. Expected `%s` to be an ancestor of `%s`.',
@@ -35715,7 +38668,7 @@ function getFirstCommonAncestorID(oneID, twoID) {
     }
   }
   var longestCommonID = oneID.substr(0, lastCommonMarkerIndex);
-  ("production" !== process.env.NODE_ENV ? invariant(
+  ("production" !== "development" ? invariant(
     isValidID(longestCommonID),
     'getFirstCommonAncestorID(%s, %s): Expected a valid React DOM ID: %s',
     oneID,
@@ -35740,13 +38693,13 @@ function getFirstCommonAncestorID(oneID, twoID) {
 function traverseParentPath(start, stop, cb, arg, skipFirst, skipLast) {
   start = start || '';
   stop = stop || '';
-  ("production" !== process.env.NODE_ENV ? invariant(
+  ("production" !== "development" ? invariant(
     start !== stop,
     'traverseParentPath(...): Cannot traverse from and to the same ID, `%s`.',
     start
   ) : invariant(start !== stop));
   var traverseUp = isAncestorIDOf(stop, start);
-  ("production" !== process.env.NODE_ENV ? invariant(
+  ("production" !== "development" ? invariant(
     traverseUp || isAncestorIDOf(start, stop),
     'traverseParentPath(%s, %s, ...): Cannot traverse from two IDs that do ' +
     'not have a parent path.',
@@ -35765,7 +38718,7 @@ function traverseParentPath(start, stop, cb, arg, skipFirst, skipLast) {
       // Only break //after// visiting `stop`.
       break;
     }
-    ("production" !== process.env.NODE_ENV ? invariant(
+    ("production" !== "development" ? invariant(
       depth++ < MAX_TREE_DEPTH,
       'traverseParentPath(%s, %s, ...): Detected an infinite loop while ' +
       'traversing the React DOM ID tree. This may be due to malformed IDs: %s',
@@ -35896,8 +38849,7 @@ var ReactInstanceHandles = {
 
 module.exports = ReactInstanceHandles;
 
-}).call(this,require('_process'))
-},{"./ReactRootIndex":94,"./invariant":146,"_process":6}],78:[function(require,module,exports){
+},{"./ReactRootIndex":95,"./invariant":147}],79:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -35946,7 +38898,7 @@ var ReactInstanceMap = {
 
 module.exports = ReactInstanceMap;
 
-},{}],79:[function(require,module,exports){
+},{}],80:[function(require,module,exports){
 /**
  * Copyright 2015, Facebook, Inc.
  * All rights reserved.
@@ -35983,7 +38935,7 @@ var ReactLifeCycle = {
 
 module.exports = ReactLifeCycle;
 
-},{}],80:[function(require,module,exports){
+},{}],81:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -36031,8 +38983,7 @@ var ReactMarkupChecksum = {
 
 module.exports = ReactMarkupChecksum;
 
-},{"./adler32":117}],81:[function(require,module,exports){
-(function (process){
+},{"./adler32":118}],82:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -36083,7 +39034,7 @@ var instancesByReactRootID = {};
 /** Mapping from reactRootID to `container` nodes. */
 var containersByReactRootID = {};
 
-if ("production" !== process.env.NODE_ENV) {
+if ("production" !== "development") {
   /** __DEV__-only mapping from reactRootID to root elements. */
   var rootElementsByReactRootID = {};
 }
@@ -36132,7 +39083,7 @@ function getID(node) {
     if (nodeCache.hasOwnProperty(id)) {
       var cached = nodeCache[id];
       if (cached !== node) {
-        ("production" !== process.env.NODE_ENV ? invariant(
+        ("production" !== "development" ? invariant(
           !isValid(cached, id),
           'ReactMount: Two valid but unequal nodes with the same `%s`: %s',
           ATTR_NAME, id
@@ -36214,7 +39165,7 @@ function getNodeFromInstance(instance) {
  */
 function isValid(node, id) {
   if (node) {
-    ("production" !== process.env.NODE_ENV ? invariant(
+    ("production" !== "development" ? invariant(
       internalGetID(node) === id,
       'ReactMount: Unexpected modification of `%s`',
       ATTR_NAME
@@ -36359,7 +39310,7 @@ var ReactMount = {
       nextElement,
       container,
       callback) {
-    if ("production" !== process.env.NODE_ENV) {
+    if ("production" !== "development") {
       ReactElementValidator.checkAndWarnForMutatedProps(nextElement);
     }
 
@@ -36370,7 +39321,7 @@ var ReactMount = {
       }
     });
 
-    if ("production" !== process.env.NODE_ENV) {
+    if ("production" !== "development") {
       // Record the root element in case it later gets transplanted.
       rootElementsByReactRootID[getReactRootID(container)] =
         getReactRootElementInContainer(container);
@@ -36387,7 +39338,7 @@ var ReactMount = {
    * @return {string} reactRoot ID prefix
    */
   _registerComponent: function(nextComponent, container) {
-    ("production" !== process.env.NODE_ENV ? invariant(
+    ("production" !== "development" ? invariant(
       container && (
         (container.nodeType === ELEMENT_NODE_TYPE || container.nodeType === DOC_NODE_TYPE)
       ),
@@ -36418,7 +39369,7 @@ var ReactMount = {
     // Various parts of our code (such as ReactCompositeComponent's
     // _renderValidatedComponent) assume that calls to render aren't nested;
     // verify that that's the case.
-    ("production" !== process.env.NODE_ENV ? warning(
+    ("production" !== "development" ? warning(
       ReactCurrentOwner.current == null,
       '_renderNewRootComponent(): Render methods should be a pure function ' +
       'of props and state; triggering nested component updates from ' +
@@ -36444,7 +39395,7 @@ var ReactMount = {
       shouldReuseMarkup
     );
 
-    if ("production" !== process.env.NODE_ENV) {
+    if ("production" !== "development") {
       // Record the root element in case it later gets transplanted.
       rootElementsByReactRootID[reactRootID] =
         getReactRootElementInContainer(container);
@@ -36466,7 +39417,7 @@ var ReactMount = {
    * @return {ReactComponent} Component instance rendered in `container`.
    */
   render: function(nextElement, container, callback) {
-    ("production" !== process.env.NODE_ENV ? invariant(
+    ("production" !== "development" ? invariant(
       ReactElement.isValidElement(nextElement),
       'React.render(): Invalid component element.%s',
       (
@@ -36504,12 +39455,12 @@ var ReactMount = {
     var containerHasReactMarkup =
       reactRootElement && ReactMount.isRenderedByReact(reactRootElement);
 
-    if ("production" !== process.env.NODE_ENV) {
+    if ("production" !== "development") {
       if (!containerHasReactMarkup || reactRootElement.nextSibling) {
         var rootElementSibling = reactRootElement;
         while (rootElementSibling) {
           if (ReactMount.isRenderedByReact(rootElementSibling)) {
-            ("production" !== process.env.NODE_ENV ? warning(
+            ("production" !== "development" ? warning(
               false,
               'render(): Target node has markup rendered by React, but there ' +
               'are unrelated nodes as well. This is most commonly caused by ' +
@@ -36561,7 +39512,7 @@ var ReactMount = {
    */
   constructAndRenderComponentByID: function(constructor, props, id) {
     var domNode = document.getElementById(id);
-    ("production" !== process.env.NODE_ENV ? invariant(
+    ("production" !== "development" ? invariant(
       domNode,
       'Tried to get element with id of "%s" but it is not present on the page.',
       id
@@ -36603,7 +39554,7 @@ var ReactMount = {
     // _renderValidatedComponent) assume that calls to render aren't nested;
     // verify that that's the case. (Strictly speaking, unmounting won't cause a
     // render but we still don't expect to be in a render call here.)
-    ("production" !== process.env.NODE_ENV ? warning(
+    ("production" !== "development" ? warning(
       ReactCurrentOwner.current == null,
       'unmountComponentAtNode(): Render methods should be a pure function of ' +
       'props and state; triggering nested component updates from render is ' +
@@ -36611,7 +39562,7 @@ var ReactMount = {
       'componentDidUpdate.'
     ) : null);
 
-    ("production" !== process.env.NODE_ENV ? invariant(
+    ("production" !== "development" ? invariant(
       container && (
         (container.nodeType === ELEMENT_NODE_TYPE || container.nodeType === DOC_NODE_TYPE)
       ),
@@ -36628,7 +39579,7 @@ var ReactMount = {
     ReactMount.unmountComponentFromNode(component, container);
     delete instancesByReactRootID[reactRootID];
     delete containersByReactRootID[reactRootID];
-    if ("production" !== process.env.NODE_ENV) {
+    if ("production" !== "development") {
       delete rootElementsByReactRootID[reactRootID];
     }
     return true;
@@ -36667,10 +39618,10 @@ var ReactMount = {
     var reactRootID = ReactInstanceHandles.getReactRootIDFromNodeID(id);
     var container = containersByReactRootID[reactRootID];
 
-    if ("production" !== process.env.NODE_ENV) {
+    if ("production" !== "development") {
       var rootElement = rootElementsByReactRootID[reactRootID];
       if (rootElement && rootElement.parentNode !== container) {
-        ("production" !== process.env.NODE_ENV ? invariant(
+        ("production" !== "development" ? invariant(
           // Call internalGetID here because getID calls isValid which calls
           // findReactContainerForID (this function).
           internalGetID(rootElement) === reactRootID,
@@ -36688,7 +39639,7 @@ var ReactMount = {
           // warning is when the container is empty.
           rootElementsByReactRootID[reactRootID] = containerChild;
         } else {
-          ("production" !== process.env.NODE_ENV ? warning(
+          ("production" !== "development" ? warning(
             false,
             'ReactMount: Root element has been removed from its original ' +
             'container. New container:', rootElement.parentNode
@@ -36812,7 +39763,7 @@ var ReactMount = {
 
     firstChildren.length = 0;
 
-    ("production" !== process.env.NODE_ENV ? invariant(
+    ("production" !== "development" ? invariant(
       false,
       'findComponentRoot(..., %s): Unable to find element. This probably ' +
       'means the DOM was unexpectedly mutated (e.g., by the browser), ' +
@@ -36826,7 +39777,7 @@ var ReactMount = {
   },
 
   _mountImageIntoNode: function(markup, container, shouldReuseMarkup) {
-    ("production" !== process.env.NODE_ENV ? invariant(
+    ("production" !== "development" ? invariant(
       container && (
         (container.nodeType === ELEMENT_NODE_TYPE || container.nodeType === DOC_NODE_TYPE)
       ),
@@ -36856,7 +39807,7 @@ var ReactMount = {
           markup.substring(diffIndex - 20, diffIndex + 20) +
           '\n (server) ' + rootMarkup.substring(diffIndex - 20, diffIndex + 20);
 
-        ("production" !== process.env.NODE_ENV ? invariant(
+        ("production" !== "development" ? invariant(
           container.nodeType !== DOC_NODE_TYPE,
           'You\'re trying to render a component to the document using ' +
           'server rendering but the checksum was invalid. This usually ' +
@@ -36869,8 +39820,8 @@ var ReactMount = {
           difference
         ) : invariant(container.nodeType !== DOC_NODE_TYPE));
 
-        if ("production" !== process.env.NODE_ENV) {
-          ("production" !== process.env.NODE_ENV ? warning(
+        if ("production" !== "development") {
+          ("production" !== "development" ? warning(
             false,
             'React attempted to reuse markup in a container but the ' +
             'checksum was invalid. This generally means that you are ' +
@@ -36886,7 +39837,7 @@ var ReactMount = {
       }
     }
 
-    ("production" !== process.env.NODE_ENV ? invariant(
+    ("production" !== "development" ? invariant(
       container.nodeType !== DOC_NODE_TYPE,
       'You\'re trying to render a component to the document but ' +
         'you didn\'t use server rendering. We can\'t do this ' +
@@ -36921,8 +39872,7 @@ ReactPerf.measureMethods(ReactMount, 'ReactMount', {
 
 module.exports = ReactMount;
 
-}).call(this,require('_process'))
-},{"./DOMProperty":20,"./ReactBrowserEventEmitter":41,"./ReactCurrentOwner":50,"./ReactElement":68,"./ReactElementValidator":69,"./ReactEmptyComponent":70,"./ReactInstanceHandles":77,"./ReactInstanceMap":78,"./ReactMarkupChecksum":80,"./ReactPerf":86,"./ReactReconciler":92,"./ReactUpdateQueue":97,"./ReactUpdates":98,"./containsNode":120,"./emptyObject":126,"./getReactRootElementInContainer":140,"./instantiateReactComponent":145,"./invariant":146,"./setInnerHTML":159,"./shouldUpdateReactComponent":162,"./warning":165,"_process":6}],82:[function(require,module,exports){
+},{"./DOMProperty":21,"./ReactBrowserEventEmitter":42,"./ReactCurrentOwner":51,"./ReactElement":69,"./ReactElementValidator":70,"./ReactEmptyComponent":71,"./ReactInstanceHandles":78,"./ReactInstanceMap":79,"./ReactMarkupChecksum":81,"./ReactPerf":87,"./ReactReconciler":93,"./ReactUpdateQueue":98,"./ReactUpdates":99,"./containsNode":121,"./emptyObject":127,"./getReactRootElementInContainer":141,"./instantiateReactComponent":146,"./invariant":147,"./setInnerHTML":160,"./shouldUpdateReactComponent":163,"./warning":166}],83:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -37352,7 +40302,7 @@ var ReactMultiChild = {
 
 module.exports = ReactMultiChild;
 
-},{"./ReactChildReconciler":42,"./ReactComponentEnvironment":47,"./ReactMultiChildUpdateTypes":83,"./ReactReconciler":92}],83:[function(require,module,exports){
+},{"./ReactChildReconciler":43,"./ReactComponentEnvironment":48,"./ReactMultiChildUpdateTypes":84,"./ReactReconciler":93}],84:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -37385,8 +40335,7 @@ var ReactMultiChildUpdateTypes = keyMirror({
 
 module.exports = ReactMultiChildUpdateTypes;
 
-},{"./keyMirror":151}],84:[function(require,module,exports){
-(function (process){
+},{"./keyMirror":152}],85:[function(require,module,exports){
 /**
  * Copyright 2014-2015, Facebook, Inc.
  * All rights reserved.
@@ -37457,7 +40406,7 @@ function getComponentClassForElement(element) {
  * @return {function} The internal class constructor function.
  */
 function createInternalComponent(element) {
-  ("production" !== process.env.NODE_ENV ? invariant(
+  ("production" !== "development" ? invariant(
     genericComponentClass,
     'There is no registered component for the tag %s',
     element.type
@@ -37491,9 +40440,7 @@ var ReactNativeComponent = {
 
 module.exports = ReactNativeComponent;
 
-}).call(this,require('_process'))
-},{"./Object.assign":37,"./invariant":146,"_process":6}],85:[function(require,module,exports){
-(function (process){
+},{"./Object.assign":38,"./invariant":147}],86:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -37563,7 +40510,7 @@ var ReactOwner = {
    * @internal
    */
   addComponentAsRefTo: function(component, ref, owner) {
-    ("production" !== process.env.NODE_ENV ? invariant(
+    ("production" !== "development" ? invariant(
       ReactOwner.isValidOwner(owner),
       'addComponentAsRefTo(...): Only a ReactOwner can have refs. This ' +
       'usually means that you\'re trying to add a ref to a component that ' +
@@ -37584,7 +40531,7 @@ var ReactOwner = {
    * @internal
    */
   removeComponentAsRefFrom: function(component, ref, owner) {
-    ("production" !== process.env.NODE_ENV ? invariant(
+    ("production" !== "development" ? invariant(
       ReactOwner.isValidOwner(owner),
       'removeComponentAsRefFrom(...): Only a ReactOwner can have refs. This ' +
       'usually means that you\'re trying to remove a ref to a component that ' +
@@ -37603,9 +40550,7 @@ var ReactOwner = {
 
 module.exports = ReactOwner;
 
-}).call(this,require('_process'))
-},{"./invariant":146,"_process":6}],86:[function(require,module,exports){
-(function (process){
+},{"./invariant":147}],87:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -37643,7 +40588,7 @@ var ReactPerf = {
    * @param {object<string>} methodNames
    */
   measureMethods: function(object, objectName, methodNames) {
-    if ("production" !== process.env.NODE_ENV) {
+    if ("production" !== "development") {
       for (var key in methodNames) {
         if (!methodNames.hasOwnProperty(key)) {
           continue;
@@ -37666,7 +40611,7 @@ var ReactPerf = {
    * @return {function}
    */
   measure: function(objName, fnName, func) {
-    if ("production" !== process.env.NODE_ENV) {
+    if ("production" !== "development") {
       var measuredFunc = null;
       var wrapper = function() {
         if (ReactPerf.enableMeasure) {
@@ -37707,9 +40652,7 @@ function _noMeasure(objName, fnName, func) {
 
 module.exports = ReactPerf;
 
-}).call(this,require('_process'))
-},{"_process":6}],87:[function(require,module,exports){
-(function (process){
+},{}],88:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -37725,7 +40668,7 @@ module.exports = ReactPerf;
 
 var ReactPropTypeLocationNames = {};
 
-if ("production" !== process.env.NODE_ENV) {
+if ("production" !== "development") {
   ReactPropTypeLocationNames = {
     prop: 'prop',
     context: 'context',
@@ -37735,8 +40678,7 @@ if ("production" !== process.env.NODE_ENV) {
 
 module.exports = ReactPropTypeLocationNames;
 
-}).call(this,require('_process'))
-},{"_process":6}],88:[function(require,module,exports){
+},{}],89:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -37760,7 +40702,7 @@ var ReactPropTypeLocations = keyMirror({
 
 module.exports = ReactPropTypeLocations;
 
-},{"./keyMirror":151}],89:[function(require,module,exports){
+},{"./keyMirror":152}],90:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -38109,7 +41051,7 @@ function getPreciseType(propValue) {
 
 module.exports = ReactPropTypes;
 
-},{"./ReactElement":68,"./ReactFragment":74,"./ReactPropTypeLocationNames":87,"./emptyFunction":125}],90:[function(require,module,exports){
+},{"./ReactElement":69,"./ReactFragment":75,"./ReactPropTypeLocationNames":88,"./emptyFunction":126}],91:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -38165,7 +41107,7 @@ PooledClass.addPoolingTo(ReactPutListenerQueue);
 
 module.exports = ReactPutListenerQueue;
 
-},{"./Object.assign":37,"./PooledClass":38,"./ReactBrowserEventEmitter":41}],91:[function(require,module,exports){
+},{"./Object.assign":38,"./PooledClass":39,"./ReactBrowserEventEmitter":42}],92:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -38341,8 +41283,7 @@ PooledClass.addPoolingTo(ReactReconcileTransaction);
 
 module.exports = ReactReconcileTransaction;
 
-},{"./CallbackQueue":16,"./Object.assign":37,"./PooledClass":38,"./ReactBrowserEventEmitter":41,"./ReactInputSelection":76,"./ReactPutListenerQueue":90,"./Transaction":114}],92:[function(require,module,exports){
-(function (process){
+},{"./CallbackQueue":17,"./Object.assign":38,"./PooledClass":39,"./ReactBrowserEventEmitter":42,"./ReactInputSelection":77,"./ReactPutListenerQueue":91,"./Transaction":115}],93:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -38381,7 +41322,7 @@ var ReactReconciler = {
    */
   mountComponent: function(internalInstance, rootID, transaction, context) {
     var markup = internalInstance.mountComponent(rootID, transaction, context);
-    if ("production" !== process.env.NODE_ENV) {
+    if ("production" !== "development") {
       ReactElementValidator.checkAndWarnForMutatedProps(
         internalInstance._currentElement
       );
@@ -38426,7 +41367,7 @@ var ReactReconciler = {
       return;
     }
 
-    if ("production" !== process.env.NODE_ENV) {
+    if ("production" !== "development") {
       ReactElementValidator.checkAndWarnForMutatedProps(nextElement);
     }
 
@@ -38464,8 +41405,7 @@ var ReactReconciler = {
 
 module.exports = ReactReconciler;
 
-}).call(this,require('_process'))
-},{"./ReactElementValidator":69,"./ReactRef":93,"_process":6}],93:[function(require,module,exports){
+},{"./ReactElementValidator":70,"./ReactRef":94}],94:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -38536,7 +41476,7 @@ ReactRef.detachRefs = function(instance, element) {
 
 module.exports = ReactRef;
 
-},{"./ReactOwner":85}],94:[function(require,module,exports){
+},{"./ReactOwner":86}],95:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -38567,8 +41507,7 @@ var ReactRootIndex = {
 
 module.exports = ReactRootIndex;
 
-},{}],95:[function(require,module,exports){
-(function (process){
+},{}],96:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -38597,7 +41536,7 @@ var invariant = require("./invariant");
  * @return {string} the HTML markup
  */
 function renderToString(element) {
-  ("production" !== process.env.NODE_ENV ? invariant(
+  ("production" !== "development" ? invariant(
     ReactElement.isValidElement(element),
     'renderToString(): You must pass a valid ReactElement.'
   ) : invariant(ReactElement.isValidElement(element)));
@@ -38624,7 +41563,7 @@ function renderToString(element) {
  * (for generating static pages)
  */
 function renderToStaticMarkup(element) {
-  ("production" !== process.env.NODE_ENV ? invariant(
+  ("production" !== "development" ? invariant(
     ReactElement.isValidElement(element),
     'renderToStaticMarkup(): You must pass a valid ReactElement.'
   ) : invariant(ReactElement.isValidElement(element)));
@@ -38648,8 +41587,7 @@ module.exports = {
   renderToStaticMarkup: renderToStaticMarkup
 };
 
-}).call(this,require('_process'))
-},{"./ReactElement":68,"./ReactInstanceHandles":77,"./ReactMarkupChecksum":80,"./ReactServerRenderingTransaction":96,"./emptyObject":126,"./instantiateReactComponent":145,"./invariant":146,"_process":6}],96:[function(require,module,exports){
+},{"./ReactElement":69,"./ReactInstanceHandles":78,"./ReactMarkupChecksum":81,"./ReactServerRenderingTransaction":97,"./emptyObject":127,"./instantiateReactComponent":146,"./invariant":147}],97:[function(require,module,exports){
 /**
  * Copyright 2014-2015, Facebook, Inc.
  * All rights reserved.
@@ -38762,8 +41700,7 @@ PooledClass.addPoolingTo(ReactServerRenderingTransaction);
 
 module.exports = ReactServerRenderingTransaction;
 
-},{"./CallbackQueue":16,"./Object.assign":37,"./PooledClass":38,"./ReactPutListenerQueue":90,"./Transaction":114,"./emptyFunction":125}],97:[function(require,module,exports){
-(function (process){
+},{"./CallbackQueue":17,"./Object.assign":38,"./PooledClass":39,"./ReactPutListenerQueue":91,"./Transaction":115,"./emptyFunction":126}],98:[function(require,module,exports){
 /**
  * Copyright 2015, Facebook, Inc.
  * All rights reserved.
@@ -38798,7 +41735,7 @@ function enqueueUpdate(internalInstance) {
 }
 
 function getInternalInstanceReadyForUpdate(publicInstance, callerName) {
-  ("production" !== process.env.NODE_ENV ? invariant(
+  ("production" !== "development" ? invariant(
     ReactCurrentOwner.current == null,
     '%s(...): Cannot update during an existing state transition ' +
     '(such as within `render`). Render methods should be a pure function ' +
@@ -38808,11 +41745,11 @@ function getInternalInstanceReadyForUpdate(publicInstance, callerName) {
 
   var internalInstance = ReactInstanceMap.get(publicInstance);
   if (!internalInstance) {
-    if ("production" !== process.env.NODE_ENV) {
+    if ("production" !== "development") {
       // Only warn when we have a callerName. Otherwise we should be silent.
       // We're probably calling from enqueueCallback. We don't want to warn
       // there because we already warned for the corresponding lifecycle method.
-      ("production" !== process.env.NODE_ENV ? warning(
+      ("production" !== "development" ? warning(
         !callerName,
         '%s(...): Can only update a mounted or mounting component. ' +
         'This usually means you called %s() on an unmounted ' +
@@ -38846,7 +41783,7 @@ var ReactUpdateQueue = {
    * @internal
    */
   enqueueCallback: function(publicInstance, callback) {
-    ("production" !== process.env.NODE_ENV ? invariant(
+    ("production" !== "development" ? invariant(
       typeof callback === 'function',
       'enqueueCallback(...): You called `setProps`, `replaceProps`, ' +
       '`setState`, `replaceState`, or `forceUpdate` with a callback that ' +
@@ -38877,7 +41814,7 @@ var ReactUpdateQueue = {
   },
 
   enqueueCallbackInternal: function(internalInstance, callback) {
-    ("production" !== process.env.NODE_ENV ? invariant(
+    ("production" !== "development" ? invariant(
       typeof callback === 'function',
       'enqueueCallback(...): You called `setProps`, `replaceProps`, ' +
       '`setState`, `replaceState`, or `forceUpdate` with a callback that ' +
@@ -38991,7 +41928,7 @@ var ReactUpdateQueue = {
       return;
     }
 
-    ("production" !== process.env.NODE_ENV ? invariant(
+    ("production" !== "development" ? invariant(
       internalInstance._isTopLevel,
       'setProps(...): You called `setProps` on a ' +
       'component with a parent. This is an anti-pattern since props will ' +
@@ -39030,7 +41967,7 @@ var ReactUpdateQueue = {
       return;
     }
 
-    ("production" !== process.env.NODE_ENV ? invariant(
+    ("production" !== "development" ? invariant(
       internalInstance._isTopLevel,
       'replaceProps(...): You called `replaceProps` on a ' +
       'component with a parent. This is an anti-pattern since props will ' +
@@ -39060,9 +41997,7 @@ var ReactUpdateQueue = {
 
 module.exports = ReactUpdateQueue;
 
-}).call(this,require('_process'))
-},{"./Object.assign":37,"./ReactCurrentOwner":50,"./ReactElement":68,"./ReactInstanceMap":78,"./ReactLifeCycle":79,"./ReactUpdates":98,"./invariant":146,"./warning":165,"_process":6}],98:[function(require,module,exports){
-(function (process){
+},{"./Object.assign":38,"./ReactCurrentOwner":51,"./ReactElement":69,"./ReactInstanceMap":79,"./ReactLifeCycle":80,"./ReactUpdates":99,"./invariant":147,"./warning":166}],99:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -39094,7 +42029,7 @@ var asapEnqueued = false;
 var batchingStrategy = null;
 
 function ensureInjected() {
-  ("production" !== process.env.NODE_ENV ? invariant(
+  ("production" !== "development" ? invariant(
     ReactUpdates.ReactReconcileTransaction && batchingStrategy,
     'ReactUpdates: must inject a reconcile transaction class and batching ' +
     'strategy'
@@ -39188,7 +42123,7 @@ function mountOrderComparator(c1, c2) {
 
 function runBatchedUpdates(transaction) {
   var len = transaction.dirtyComponentsLength;
-  ("production" !== process.env.NODE_ENV ? invariant(
+  ("production" !== "development" ? invariant(
     len === dirtyComponents.length,
     'Expected flush transaction\'s stored dirty-components length (%s) to ' +
     'match dirty-components array length (%s).',
@@ -39268,7 +42203,7 @@ function enqueueUpdate(component) {
   // verify that that's the case. (This is called by each top-level update
   // function, like setProps, setState, forceUpdate, etc.; creation and
   // destruction of top-level components is guarded in ReactMount.)
-  ("production" !== process.env.NODE_ENV ? warning(
+  ("production" !== "development" ? warning(
     ReactCurrentOwner.current == null,
     'enqueueUpdate(): Render methods should be a pure function of props ' +
     'and state; triggering nested component updates from render is not ' +
@@ -39289,7 +42224,7 @@ function enqueueUpdate(component) {
  * if no updates are currently being performed.
  */
 function asap(callback, context) {
-  ("production" !== process.env.NODE_ENV ? invariant(
+  ("production" !== "development" ? invariant(
     batchingStrategy.isBatchingUpdates,
     'ReactUpdates.asap: Can\'t enqueue an asap callback in a context where' +
     'updates are not being batched.'
@@ -39300,7 +42235,7 @@ function asap(callback, context) {
 
 var ReactUpdatesInjection = {
   injectReconcileTransaction: function(ReconcileTransaction) {
-    ("production" !== process.env.NODE_ENV ? invariant(
+    ("production" !== "development" ? invariant(
       ReconcileTransaction,
       'ReactUpdates: must provide a reconcile transaction class'
     ) : invariant(ReconcileTransaction));
@@ -39308,15 +42243,15 @@ var ReactUpdatesInjection = {
   },
 
   injectBatchingStrategy: function(_batchingStrategy) {
-    ("production" !== process.env.NODE_ENV ? invariant(
+    ("production" !== "development" ? invariant(
       _batchingStrategy,
       'ReactUpdates: must provide a batching strategy'
     ) : invariant(_batchingStrategy));
-    ("production" !== process.env.NODE_ENV ? invariant(
+    ("production" !== "development" ? invariant(
       typeof _batchingStrategy.batchedUpdates === 'function',
       'ReactUpdates: must provide a batchedUpdates() function'
     ) : invariant(typeof _batchingStrategy.batchedUpdates === 'function'));
-    ("production" !== process.env.NODE_ENV ? invariant(
+    ("production" !== "development" ? invariant(
       typeof _batchingStrategy.isBatchingUpdates === 'boolean',
       'ReactUpdates: must provide an isBatchingUpdates boolean attribute'
     ) : invariant(typeof _batchingStrategy.isBatchingUpdates === 'boolean'));
@@ -39342,8 +42277,7 @@ var ReactUpdates = {
 
 module.exports = ReactUpdates;
 
-}).call(this,require('_process'))
-},{"./CallbackQueue":16,"./Object.assign":37,"./PooledClass":38,"./ReactCurrentOwner":50,"./ReactPerf":86,"./ReactReconciler":92,"./Transaction":114,"./invariant":146,"./warning":165,"_process":6}],99:[function(require,module,exports){
+},{"./CallbackQueue":17,"./Object.assign":38,"./PooledClass":39,"./ReactCurrentOwner":51,"./ReactPerf":87,"./ReactReconciler":93,"./Transaction":115,"./invariant":147,"./warning":166}],100:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -39437,7 +42371,7 @@ var SVGDOMPropertyConfig = {
 
 module.exports = SVGDOMPropertyConfig;
 
-},{"./DOMProperty":20}],100:[function(require,module,exports){
+},{"./DOMProperty":21}],101:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -39632,7 +42566,7 @@ var SelectEventPlugin = {
 
 module.exports = SelectEventPlugin;
 
-},{"./EventConstants":25,"./EventPropagators":30,"./ReactInputSelection":76,"./SyntheticEvent":106,"./getActiveElement":132,"./isTextInputElement":149,"./keyOf":152,"./shallowEqual":161}],101:[function(require,module,exports){
+},{"./EventConstants":26,"./EventPropagators":31,"./ReactInputSelection":77,"./SyntheticEvent":107,"./getActiveElement":133,"./isTextInputElement":150,"./keyOf":153,"./shallowEqual":162}],102:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -39663,8 +42597,7 @@ var ServerReactRootIndex = {
 
 module.exports = ServerReactRootIndex;
 
-},{}],102:[function(require,module,exports){
-(function (process){
+},{}],103:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -39971,7 +42904,7 @@ var SimpleEventPlugin = {
   executeDispatch: function(event, listener, domID) {
     var returnValue = EventPluginUtils.executeDispatch(event, listener, domID);
 
-    ("production" !== process.env.NODE_ENV ? warning(
+    ("production" !== "development" ? warning(
       typeof returnValue !== 'boolean',
       'Returning `false` from an event handler is deprecated and will be ' +
       'ignored in a future release. Instead, manually call ' +
@@ -40072,7 +43005,7 @@ var SimpleEventPlugin = {
         EventConstructor = SyntheticClipboardEvent;
         break;
     }
-    ("production" !== process.env.NODE_ENV ? invariant(
+    ("production" !== "development" ? invariant(
       EventConstructor,
       'SimpleEventPlugin: Unhandled event type, `%s`.',
       topLevelType
@@ -40090,8 +43023,7 @@ var SimpleEventPlugin = {
 
 module.exports = SimpleEventPlugin;
 
-}).call(this,require('_process'))
-},{"./EventConstants":25,"./EventPluginUtils":29,"./EventPropagators":30,"./SyntheticClipboardEvent":103,"./SyntheticDragEvent":105,"./SyntheticEvent":106,"./SyntheticFocusEvent":107,"./SyntheticKeyboardEvent":109,"./SyntheticMouseEvent":110,"./SyntheticTouchEvent":111,"./SyntheticUIEvent":112,"./SyntheticWheelEvent":113,"./getEventCharCode":133,"./invariant":146,"./keyOf":152,"./warning":165,"_process":6}],103:[function(require,module,exports){
+},{"./EventConstants":26,"./EventPluginUtils":30,"./EventPropagators":31,"./SyntheticClipboardEvent":104,"./SyntheticDragEvent":106,"./SyntheticEvent":107,"./SyntheticFocusEvent":108,"./SyntheticKeyboardEvent":110,"./SyntheticMouseEvent":111,"./SyntheticTouchEvent":112,"./SyntheticUIEvent":113,"./SyntheticWheelEvent":114,"./getEventCharCode":134,"./invariant":147,"./keyOf":153,"./warning":166}],104:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -40136,7 +43068,7 @@ SyntheticEvent.augmentClass(SyntheticClipboardEvent, ClipboardEventInterface);
 
 module.exports = SyntheticClipboardEvent;
 
-},{"./SyntheticEvent":106}],104:[function(require,module,exports){
+},{"./SyntheticEvent":107}],105:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -40181,7 +43113,7 @@ SyntheticEvent.augmentClass(
 
 module.exports = SyntheticCompositionEvent;
 
-},{"./SyntheticEvent":106}],105:[function(require,module,exports){
+},{"./SyntheticEvent":107}],106:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -40220,7 +43152,7 @@ SyntheticMouseEvent.augmentClass(SyntheticDragEvent, DragEventInterface);
 
 module.exports = SyntheticDragEvent;
 
-},{"./SyntheticMouseEvent":110}],106:[function(require,module,exports){
+},{"./SyntheticMouseEvent":111}],107:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -40386,7 +43318,7 @@ PooledClass.addPoolingTo(SyntheticEvent, PooledClass.threeArgumentPooler);
 
 module.exports = SyntheticEvent;
 
-},{"./Object.assign":37,"./PooledClass":38,"./emptyFunction":125,"./getEventTarget":136}],107:[function(require,module,exports){
+},{"./Object.assign":38,"./PooledClass":39,"./emptyFunction":126,"./getEventTarget":137}],108:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -40425,7 +43357,7 @@ SyntheticUIEvent.augmentClass(SyntheticFocusEvent, FocusEventInterface);
 
 module.exports = SyntheticFocusEvent;
 
-},{"./SyntheticUIEvent":112}],108:[function(require,module,exports){
+},{"./SyntheticUIEvent":113}],109:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -40471,7 +43403,7 @@ SyntheticEvent.augmentClass(
 
 module.exports = SyntheticInputEvent;
 
-},{"./SyntheticEvent":106}],109:[function(require,module,exports){
+},{"./SyntheticEvent":107}],110:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -40558,7 +43490,7 @@ SyntheticUIEvent.augmentClass(SyntheticKeyboardEvent, KeyboardEventInterface);
 
 module.exports = SyntheticKeyboardEvent;
 
-},{"./SyntheticUIEvent":112,"./getEventCharCode":133,"./getEventKey":134,"./getEventModifierState":135}],110:[function(require,module,exports){
+},{"./SyntheticUIEvent":113,"./getEventCharCode":134,"./getEventKey":135,"./getEventModifierState":136}],111:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -40639,7 +43571,7 @@ SyntheticUIEvent.augmentClass(SyntheticMouseEvent, MouseEventInterface);
 
 module.exports = SyntheticMouseEvent;
 
-},{"./SyntheticUIEvent":112,"./ViewportMetrics":115,"./getEventModifierState":135}],111:[function(require,module,exports){
+},{"./SyntheticUIEvent":113,"./ViewportMetrics":116,"./getEventModifierState":136}],112:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -40687,7 +43619,7 @@ SyntheticUIEvent.augmentClass(SyntheticTouchEvent, TouchEventInterface);
 
 module.exports = SyntheticTouchEvent;
 
-},{"./SyntheticUIEvent":112,"./getEventModifierState":135}],112:[function(require,module,exports){
+},{"./SyntheticUIEvent":113,"./getEventModifierState":136}],113:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -40749,7 +43681,7 @@ SyntheticEvent.augmentClass(SyntheticUIEvent, UIEventInterface);
 
 module.exports = SyntheticUIEvent;
 
-},{"./SyntheticEvent":106,"./getEventTarget":136}],113:[function(require,module,exports){
+},{"./SyntheticEvent":107,"./getEventTarget":137}],114:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -40810,8 +43742,7 @@ SyntheticMouseEvent.augmentClass(SyntheticWheelEvent, WheelEventInterface);
 
 module.exports = SyntheticWheelEvent;
 
-},{"./SyntheticMouseEvent":110}],114:[function(require,module,exports){
-(function (process){
+},{"./SyntheticMouseEvent":111}],115:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -40930,7 +43861,7 @@ var Mixin = {
    * @return Return value from `method`.
    */
   perform: function(method, scope, a, b, c, d, e, f) {
-    ("production" !== process.env.NODE_ENV ? invariant(
+    ("production" !== "development" ? invariant(
       !this.isInTransaction(),
       'Transaction.perform(...): Cannot initialize a transaction when there ' +
       'is already an outstanding transaction.'
@@ -41002,7 +43933,7 @@ var Mixin = {
    * invoked).
    */
   closeAll: function(startIndex) {
-    ("production" !== process.env.NODE_ENV ? invariant(
+    ("production" !== "development" ? invariant(
       this.isInTransaction(),
       'Transaction.closeAll(): Cannot close transaction when none are open.'
     ) : invariant(this.isInTransaction()));
@@ -41050,8 +43981,7 @@ var Transaction = {
 
 module.exports = Transaction;
 
-}).call(this,require('_process'))
-},{"./invariant":146,"_process":6}],115:[function(require,module,exports){
+},{"./invariant":147}],116:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -41080,8 +44010,7 @@ var ViewportMetrics = {
 
 module.exports = ViewportMetrics;
 
-},{}],116:[function(require,module,exports){
-(function (process){
+},{}],117:[function(require,module,exports){
 /**
  * Copyright 2014-2015, Facebook, Inc.
  * All rights reserved.
@@ -41112,7 +44041,7 @@ var invariant = require("./invariant");
  */
 
 function accumulateInto(current, next) {
-  ("production" !== process.env.NODE_ENV ? invariant(
+  ("production" !== "development" ? invariant(
     next != null,
     'accumulateInto(...): Accumulated items must not be null or undefined.'
   ) : invariant(next != null));
@@ -41145,8 +44074,7 @@ function accumulateInto(current, next) {
 
 module.exports = accumulateInto;
 
-}).call(this,require('_process'))
-},{"./invariant":146,"_process":6}],117:[function(require,module,exports){
+},{"./invariant":147}],118:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -41180,7 +44108,7 @@ function adler32(data) {
 
 module.exports = adler32;
 
-},{}],118:[function(require,module,exports){
+},{}],119:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -41212,7 +44140,7 @@ function camelize(string) {
 
 module.exports = camelize;
 
-},{}],119:[function(require,module,exports){
+},{}],120:[function(require,module,exports){
 /**
  * Copyright 2014-2015, Facebook, Inc.
  * All rights reserved.
@@ -41254,7 +44182,7 @@ function camelizeStyleName(string) {
 
 module.exports = camelizeStyleName;
 
-},{"./camelize":118}],120:[function(require,module,exports){
+},{"./camelize":119}],121:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -41298,7 +44226,7 @@ function containsNode(outerNode, innerNode) {
 
 module.exports = containsNode;
 
-},{"./isTextNode":150}],121:[function(require,module,exports){
+},{"./isTextNode":151}],122:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -41384,8 +44312,7 @@ function createArrayFromMixed(obj) {
 
 module.exports = createArrayFromMixed;
 
-},{"./toArray":163}],122:[function(require,module,exports){
-(function (process){
+},{"./toArray":164}],123:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -41425,7 +44352,7 @@ function createFullPageComponent(tag) {
     displayName: 'ReactFullPageComponent' + tag,
 
     componentWillUnmount: function() {
-      ("production" !== process.env.NODE_ENV ? invariant(
+      ("production" !== "development" ? invariant(
         false,
         '%s tried to unmount. Because of cross-browser quirks it is ' +
         'impossible to unmount some top-level components (eg <html>, <head>, ' +
@@ -41445,9 +44372,7 @@ function createFullPageComponent(tag) {
 
 module.exports = createFullPageComponent;
 
-}).call(this,require('_process'))
-},{"./ReactClass":44,"./ReactElement":68,"./invariant":146,"_process":6}],123:[function(require,module,exports){
-(function (process){
+},{"./ReactClass":45,"./ReactElement":69,"./invariant":147}],124:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -41502,7 +44427,7 @@ function getNodeName(markup) {
  */
 function createNodesFromMarkup(markup, handleScript) {
   var node = dummyNode;
-  ("production" !== process.env.NODE_ENV ? invariant(!!dummyNode, 'createNodesFromMarkup dummy not initialized') : invariant(!!dummyNode));
+  ("production" !== "development" ? invariant(!!dummyNode, 'createNodesFromMarkup dummy not initialized') : invariant(!!dummyNode));
   var nodeName = getNodeName(markup);
 
   var wrap = nodeName && getMarkupWrap(nodeName);
@@ -41519,7 +44444,7 @@ function createNodesFromMarkup(markup, handleScript) {
 
   var scripts = node.getElementsByTagName('script');
   if (scripts.length) {
-    ("production" !== process.env.NODE_ENV ? invariant(
+    ("production" !== "development" ? invariant(
       handleScript,
       'createNodesFromMarkup(...): Unexpected <script> element rendered.'
     ) : invariant(handleScript));
@@ -41535,8 +44460,7 @@ function createNodesFromMarkup(markup, handleScript) {
 
 module.exports = createNodesFromMarkup;
 
-}).call(this,require('_process'))
-},{"./ExecutionEnvironment":31,"./createArrayFromMixed":121,"./getMarkupWrap":138,"./invariant":146,"_process":6}],124:[function(require,module,exports){
+},{"./ExecutionEnvironment":32,"./createArrayFromMixed":122,"./getMarkupWrap":139,"./invariant":147}],125:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -41594,7 +44518,7 @@ function dangerousStyleValue(name, value) {
 
 module.exports = dangerousStyleValue;
 
-},{"./CSSProperty":14}],125:[function(require,module,exports){
+},{"./CSSProperty":15}],126:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -41628,8 +44552,7 @@ emptyFunction.thatReturnsArgument = function(arg) { return arg; };
 
 module.exports = emptyFunction;
 
-},{}],126:[function(require,module,exports){
-(function (process){
+},{}],127:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -41645,14 +44568,13 @@ module.exports = emptyFunction;
 
 var emptyObject = {};
 
-if ("production" !== process.env.NODE_ENV) {
+if ("production" !== "development") {
   Object.freeze(emptyObject);
 }
 
 module.exports = emptyObject;
 
-}).call(this,require('_process'))
-},{"_process":6}],127:[function(require,module,exports){
+},{}],128:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -41692,8 +44614,7 @@ function escapeTextContentForBrowser(text) {
 
 module.exports = escapeTextContentForBrowser;
 
-},{}],128:[function(require,module,exports){
-(function (process){
+},{}],129:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -41723,10 +44644,10 @@ var warning = require("./warning");
  * @return {DOMElement} The root node of this element.
  */
 function findDOMNode(componentOrElement) {
-  if ("production" !== process.env.NODE_ENV) {
+  if ("production" !== "development") {
     var owner = ReactCurrentOwner.current;
     if (owner !== null) {
-      ("production" !== process.env.NODE_ENV ? warning(
+      ("production" !== "development" ? warning(
         owner._warnedAboutRefsInRender,
         '%s is accessing getDOMNode or findDOMNode inside its render(). ' +
         'render() should be a pure function of props and state. It should ' +
@@ -41747,7 +44668,7 @@ function findDOMNode(componentOrElement) {
   if (ReactInstanceMap.has(componentOrElement)) {
     return ReactMount.getNodeFromInstance(componentOrElement);
   }
-  ("production" !== process.env.NODE_ENV ? invariant(
+  ("production" !== "development" ? invariant(
     componentOrElement.render == null ||
     typeof componentOrElement.render !== 'function',
     'Component (with keys: %s) contains `render` method ' +
@@ -41755,7 +44676,7 @@ function findDOMNode(componentOrElement) {
     Object.keys(componentOrElement)
   ) : invariant(componentOrElement.render == null ||
   typeof componentOrElement.render !== 'function'));
-  ("production" !== process.env.NODE_ENV ? invariant(
+  ("production" !== "development" ? invariant(
     false,
     'Element appears to be neither ReactComponent nor DOMNode (keys: %s)',
     Object.keys(componentOrElement)
@@ -41764,9 +44685,7 @@ function findDOMNode(componentOrElement) {
 
 module.exports = findDOMNode;
 
-}).call(this,require('_process'))
-},{"./ReactCurrentOwner":50,"./ReactInstanceMap":78,"./ReactMount":81,"./invariant":146,"./isNode":148,"./warning":165,"_process":6}],129:[function(require,module,exports){
-(function (process){
+},{"./ReactCurrentOwner":51,"./ReactInstanceMap":79,"./ReactMount":82,"./invariant":147,"./isNode":149,"./warning":166}],130:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -41792,8 +44711,8 @@ function flattenSingleChildIntoContext(traverseContext, child, name) {
   // We found a component instance.
   var result = traverseContext;
   var keyUnique = !result.hasOwnProperty(name);
-  if ("production" !== process.env.NODE_ENV) {
-    ("production" !== process.env.NODE_ENV ? warning(
+  if ("production" !== "development") {
+    ("production" !== "development" ? warning(
       keyUnique,
       'flattenChildren(...): Encountered two children with the same key, ' +
       '`%s`. Child keys must be unique; when two children share a key, only ' +
@@ -41822,8 +44741,7 @@ function flattenChildren(children) {
 
 module.exports = flattenChildren;
 
-}).call(this,require('_process'))
-},{"./traverseAllChildren":164,"./warning":165,"_process":6}],130:[function(require,module,exports){
+},{"./traverseAllChildren":165,"./warning":166}],131:[function(require,module,exports){
 /**
  * Copyright 2014-2015, Facebook, Inc.
  * All rights reserved.
@@ -41852,7 +44770,7 @@ function focusNode(node) {
 
 module.exports = focusNode;
 
-},{}],131:[function(require,module,exports){
+},{}],132:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -41883,7 +44801,7 @@ var forEachAccumulated = function(arr, cb, scope) {
 
 module.exports = forEachAccumulated;
 
-},{}],132:[function(require,module,exports){
+},{}],133:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -41912,7 +44830,7 @@ function getActiveElement() /*?DOMElement*/ {
 
 module.exports = getActiveElement;
 
-},{}],133:[function(require,module,exports){
+},{}],134:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -41964,7 +44882,7 @@ function getEventCharCode(nativeEvent) {
 
 module.exports = getEventCharCode;
 
-},{}],134:[function(require,module,exports){
+},{}],135:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -42069,7 +44987,7 @@ function getEventKey(nativeEvent) {
 
 module.exports = getEventKey;
 
-},{"./getEventCharCode":133}],135:[function(require,module,exports){
+},{"./getEventCharCode":134}],136:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -42116,7 +45034,7 @@ function getEventModifierState(nativeEvent) {
 
 module.exports = getEventModifierState;
 
-},{}],136:[function(require,module,exports){
+},{}],137:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -42147,7 +45065,7 @@ function getEventTarget(nativeEvent) {
 
 module.exports = getEventTarget;
 
-},{}],137:[function(require,module,exports){
+},{}],138:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -42191,8 +45109,7 @@ function getIteratorFn(maybeIterable) {
 
 module.exports = getIteratorFn;
 
-},{}],138:[function(require,module,exports){
-(function (process){
+},{}],139:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -42291,7 +45208,7 @@ var markupWrap = {
  * @return {?array} Markup wrap configuration, if applicable.
  */
 function getMarkupWrap(nodeName) {
-  ("production" !== process.env.NODE_ENV ? invariant(!!dummyNode, 'Markup wrapping node not initialized') : invariant(!!dummyNode));
+  ("production" !== "development" ? invariant(!!dummyNode, 'Markup wrapping node not initialized') : invariant(!!dummyNode));
   if (!markupWrap.hasOwnProperty(nodeName)) {
     nodeName = '*';
   }
@@ -42309,8 +45226,7 @@ function getMarkupWrap(nodeName) {
 
 module.exports = getMarkupWrap;
 
-}).call(this,require('_process'))
-},{"./ExecutionEnvironment":31,"./invariant":146,"_process":6}],139:[function(require,module,exports){
+},{"./ExecutionEnvironment":32,"./invariant":147}],140:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -42385,7 +45301,7 @@ function getNodeForCharacterOffset(root, offset) {
 
 module.exports = getNodeForCharacterOffset;
 
-},{}],140:[function(require,module,exports){
+},{}],141:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -42420,7 +45336,7 @@ function getReactRootElementInContainer(container) {
 
 module.exports = getReactRootElementInContainer;
 
-},{}],141:[function(require,module,exports){
+},{}],142:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -42457,7 +45373,7 @@ function getTextContentAccessor() {
 
 module.exports = getTextContentAccessor;
 
-},{"./ExecutionEnvironment":31}],142:[function(require,module,exports){
+},{"./ExecutionEnvironment":32}],143:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -42497,7 +45413,7 @@ function getUnboundedScrollPosition(scrollable) {
 
 module.exports = getUnboundedScrollPosition;
 
-},{}],143:[function(require,module,exports){
+},{}],144:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -42530,7 +45446,7 @@ function hyphenate(string) {
 
 module.exports = hyphenate;
 
-},{}],144:[function(require,module,exports){
+},{}],145:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -42571,8 +45487,7 @@ function hyphenateStyleName(string) {
 
 module.exports = hyphenateStyleName;
 
-},{"./hyphenate":143}],145:[function(require,module,exports){
-(function (process){
+},{"./hyphenate":144}],146:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -42638,8 +45553,8 @@ function instantiateReactComponent(node, parentCompositeType) {
 
   if (typeof node === 'object') {
     var element = node;
-    if ("production" !== process.env.NODE_ENV) {
-      ("production" !== process.env.NODE_ENV ? warning(
+    if ("production" !== "development") {
+      ("production" !== "development" ? warning(
         element && (typeof element.type === 'function' ||
                     typeof element.type === 'string'),
         'Only functions or strings can be mounted as React components.'
@@ -42664,15 +45579,15 @@ function instantiateReactComponent(node, parentCompositeType) {
   } else if (typeof node === 'string' || typeof node === 'number') {
     instance = ReactNativeComponent.createInstanceForText(node);
   } else {
-    ("production" !== process.env.NODE_ENV ? invariant(
+    ("production" !== "development" ? invariant(
       false,
       'Encountered invalid React node of type %s',
       typeof node
     ) : invariant(false));
   }
 
-  if ("production" !== process.env.NODE_ENV) {
-    ("production" !== process.env.NODE_ENV ? warning(
+  if ("production" !== "development") {
+    ("production" !== "development" ? warning(
       typeof instance.construct === 'function' &&
       typeof instance.mountComponent === 'function' &&
       typeof instance.receiveComponent === 'function' &&
@@ -42690,14 +45605,14 @@ function instantiateReactComponent(node, parentCompositeType) {
   instance._mountIndex = 0;
   instance._mountImage = null;
 
-  if ("production" !== process.env.NODE_ENV) {
+  if ("production" !== "development") {
     instance._isOwnerNecessary = false;
     instance._warnedAboutRefsInRender = false;
   }
 
   // Internal instances should fully constructed at this point, so they should
   // not get any new fields added to them at this point.
-  if ("production" !== process.env.NODE_ENV) {
+  if ("production" !== "development") {
     if (Object.preventExtensions) {
       Object.preventExtensions(instance);
     }
@@ -42708,9 +45623,7 @@ function instantiateReactComponent(node, parentCompositeType) {
 
 module.exports = instantiateReactComponent;
 
-}).call(this,require('_process'))
-},{"./Object.assign":37,"./ReactCompositeComponent":48,"./ReactEmptyComponent":70,"./ReactNativeComponent":84,"./invariant":146,"./warning":165,"_process":6}],146:[function(require,module,exports){
-(function (process){
+},{"./Object.assign":38,"./ReactCompositeComponent":49,"./ReactEmptyComponent":71,"./ReactNativeComponent":85,"./invariant":147,"./warning":166}],147:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -42736,7 +45649,7 @@ module.exports = instantiateReactComponent;
  */
 
 var invariant = function(condition, format, a, b, c, d, e, f) {
-  if ("production" !== process.env.NODE_ENV) {
+  if ("production" !== "development") {
     if (format === undefined) {
       throw new Error('invariant requires an error message argument');
     }
@@ -42765,8 +45678,7 @@ var invariant = function(condition, format, a, b, c, d, e, f) {
 
 module.exports = invariant;
 
-}).call(this,require('_process'))
-},{"_process":6}],147:[function(require,module,exports){
+},{}],148:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -42831,7 +45743,7 @@ function isEventSupported(eventNameSuffix, capture) {
 
 module.exports = isEventSupported;
 
-},{"./ExecutionEnvironment":31}],148:[function(require,module,exports){
+},{"./ExecutionEnvironment":32}],149:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -42858,7 +45770,7 @@ function isNode(object) {
 
 module.exports = isNode;
 
-},{}],149:[function(require,module,exports){
+},{}],150:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -42901,7 +45813,7 @@ function isTextInputElement(elem) {
 
 module.exports = isTextInputElement;
 
-},{}],150:[function(require,module,exports){
+},{}],151:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -42926,8 +45838,7 @@ function isTextNode(object) {
 
 module.exports = isTextNode;
 
-},{"./isNode":148}],151:[function(require,module,exports){
-(function (process){
+},{"./isNode":149}],152:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -42965,7 +45876,7 @@ var invariant = require("./invariant");
 var keyMirror = function(obj) {
   var ret = {};
   var key;
-  ("production" !== process.env.NODE_ENV ? invariant(
+  ("production" !== "development" ? invariant(
     obj instanceof Object && !Array.isArray(obj),
     'keyMirror(...): Argument must be an object.'
   ) : invariant(obj instanceof Object && !Array.isArray(obj)));
@@ -42980,8 +45891,7 @@ var keyMirror = function(obj) {
 
 module.exports = keyMirror;
 
-}).call(this,require('_process'))
-},{"./invariant":146,"_process":6}],152:[function(require,module,exports){
+},{"./invariant":147}],153:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -43017,7 +45927,7 @@ var keyOf = function(oneKeyObj) {
 
 module.exports = keyOf;
 
-},{}],153:[function(require,module,exports){
+},{}],154:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -43070,7 +45980,7 @@ function mapObject(object, callback, context) {
 
 module.exports = mapObject;
 
-},{}],154:[function(require,module,exports){
+},{}],155:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -43103,8 +46013,7 @@ function memoizeStringOnly(callback) {
 
 module.exports = memoizeStringOnly;
 
-},{}],155:[function(require,module,exports){
-(function (process){
+},{}],156:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -43133,7 +46042,7 @@ var invariant = require("./invariant");
  * structure.
  */
 function onlyChild(children) {
-  ("production" !== process.env.NODE_ENV ? invariant(
+  ("production" !== "development" ? invariant(
     ReactElement.isValidElement(children),
     'onlyChild must be passed a children with exactly one child.'
   ) : invariant(ReactElement.isValidElement(children)));
@@ -43142,8 +46051,7 @@ function onlyChild(children) {
 
 module.exports = onlyChild;
 
-}).call(this,require('_process'))
-},{"./ReactElement":68,"./invariant":146,"_process":6}],156:[function(require,module,exports){
+},{"./ReactElement":69,"./invariant":147}],157:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -43171,7 +46079,7 @@ if (ExecutionEnvironment.canUseDOM) {
 
 module.exports = performance || {};
 
-},{"./ExecutionEnvironment":31}],157:[function(require,module,exports){
+},{"./ExecutionEnvironment":32}],158:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -43199,7 +46107,7 @@ var performanceNow = performance.now.bind(performance);
 
 module.exports = performanceNow;
 
-},{"./performance":156}],158:[function(require,module,exports){
+},{"./performance":157}],159:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -43227,7 +46135,7 @@ function quoteAttributeValueForBrowser(value) {
 
 module.exports = quoteAttributeValueForBrowser;
 
-},{"./escapeTextContentForBrowser":127}],159:[function(require,module,exports){
+},{"./escapeTextContentForBrowser":128}],160:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -43316,7 +46224,7 @@ if (ExecutionEnvironment.canUseDOM) {
 
 module.exports = setInnerHTML;
 
-},{"./ExecutionEnvironment":31}],160:[function(require,module,exports){
+},{"./ExecutionEnvironment":32}],161:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -43358,7 +46266,7 @@ if (ExecutionEnvironment.canUseDOM) {
 
 module.exports = setTextContent;
 
-},{"./ExecutionEnvironment":31,"./escapeTextContentForBrowser":127,"./setInnerHTML":159}],161:[function(require,module,exports){
+},{"./ExecutionEnvironment":32,"./escapeTextContentForBrowser":128,"./setInnerHTML":160}],162:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -43402,8 +46310,7 @@ function shallowEqual(objA, objB) {
 
 module.exports = shallowEqual;
 
-},{}],162:[function(require,module,exports){
-(function (process){
+},{}],163:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -43445,7 +46352,7 @@ function shouldUpdateReactComponent(prevElement, nextElement) {
         var prevName = null;
         var nextName = null;
         var nextDisplayName = null;
-        if ("production" !== process.env.NODE_ENV) {
+        if ("production" !== "development") {
           if (!ownersMatch) {
             if (prevElement._owner != null &&
                 prevElement._owner.getPublicInstance() != null &&
@@ -43479,7 +46386,7 @@ function shouldUpdateReactComponent(prevElement, nextElement) {
                 if (nextElement._owner != null) {
                   nextElement._owner._isOwnerNecessary = true;
                 }
-                ("production" !== process.env.NODE_ENV ? warning(
+                ("production" !== "development" ? warning(
                   false,
                   '<%s /> is being rendered by both %s and %s using the same ' +
                   'key (%s) in the same place. Currently, this means that ' +
@@ -43505,9 +46412,7 @@ function shouldUpdateReactComponent(prevElement, nextElement) {
 
 module.exports = shouldUpdateReactComponent;
 
-}).call(this,require('_process'))
-},{"./warning":165,"_process":6}],163:[function(require,module,exports){
-(function (process){
+},{"./warning":166}],164:[function(require,module,exports){
 /**
  * Copyright 2014-2015, Facebook, Inc.
  * All rights reserved.
@@ -43536,19 +46441,19 @@ function toArray(obj) {
 
   // Some browse builtin objects can report typeof 'function' (e.g. NodeList in
   // old versions of Safari).
-  ("production" !== process.env.NODE_ENV ? invariant(
+  ("production" !== "development" ? invariant(
     !Array.isArray(obj) &&
     (typeof obj === 'object' || typeof obj === 'function'),
     'toArray: Array-like object expected'
   ) : invariant(!Array.isArray(obj) &&
   (typeof obj === 'object' || typeof obj === 'function')));
 
-  ("production" !== process.env.NODE_ENV ? invariant(
+  ("production" !== "development" ? invariant(
     typeof length === 'number',
     'toArray: Object needs a length property'
   ) : invariant(typeof length === 'number'));
 
-  ("production" !== process.env.NODE_ENV ? invariant(
+  ("production" !== "development" ? invariant(
     length === 0 ||
     (length - 1) in obj,
     'toArray: Object should have keys for indices'
@@ -43577,9 +46482,7 @@ function toArray(obj) {
 
 module.exports = toArray;
 
-}).call(this,require('_process'))
-},{"./invariant":146,"_process":6}],164:[function(require,module,exports){
-(function (process){
+},{"./invariant":147}],165:[function(require,module,exports){
 /**
  * Copyright 2013-2015, Facebook, Inc.
  * All rights reserved.
@@ -43743,8 +46646,8 @@ function traverseAllChildrenImpl(
           );
         }
       } else {
-        if ("production" !== process.env.NODE_ENV) {
-          ("production" !== process.env.NODE_ENV ? warning(
+        if ("production" !== "development") {
+          ("production" !== "development" ? warning(
             didWarnAboutMaps,
             'Using Maps as children is not yet fully supported. It is an ' +
             'experimental feature that might be removed. Convert it to a ' +
@@ -43774,7 +46677,7 @@ function traverseAllChildrenImpl(
         }
       }
     } else if (type === 'object') {
-      ("production" !== process.env.NODE_ENV ? invariant(
+      ("production" !== "development" ? invariant(
         children.nodeType !== 1,
         'traverseAllChildren(...): Encountered an invalid child; DOM ' +
         'elements are not valid children of React components.'
@@ -43830,9 +46733,7 @@ function traverseAllChildren(children, callback, traverseContext) {
 
 module.exports = traverseAllChildren;
 
-}).call(this,require('_process'))
-},{"./ReactElement":68,"./ReactFragment":74,"./ReactInstanceHandles":77,"./getIteratorFn":137,"./invariant":146,"./warning":165,"_process":6}],165:[function(require,module,exports){
-(function (process){
+},{"./ReactElement":69,"./ReactFragment":75,"./ReactInstanceHandles":78,"./getIteratorFn":138,"./invariant":147,"./warning":166}],166:[function(require,module,exports){
 /**
  * Copyright 2014-2015, Facebook, Inc.
  * All rights reserved.
@@ -43857,7 +46758,7 @@ var emptyFunction = require("./emptyFunction");
 
 var warning = emptyFunction;
 
-if ("production" !== process.env.NODE_ENV) {
+if ("production" !== "development") {
   warning = function(condition, format ) {for (var args=[],$__0=2,$__1=arguments.length;$__0<$__1;$__0++) args.push(arguments[$__0]);
     if (format === undefined) {
       throw new Error(
@@ -43893,11 +46794,10 @@ if ("production" !== process.env.NODE_ENV) {
 
 module.exports = warning;
 
-}).call(this,require('_process'))
-},{"./emptyFunction":125,"_process":6}],166:[function(require,module,exports){
+},{"./emptyFunction":126}],167:[function(require,module,exports){
 module.exports = require('./lib/React');
 
-},{"./lib/React":39}],167:[function(require,module,exports){
+},{"./lib/React":40}],168:[function(require,module,exports){
 ///////////////////////////////////////////////////////////////////////////////
 //
 //  AutobahnJS - http://autobahn.ws, http://wamp.ws
@@ -43913,7 +46813,7 @@ module.exports = require('./lib/React');
 
 module.exports = require('./lib/autobahn');
 
-},{"./lib/autobahn":170}],168:[function(require,module,exports){
+},{"./lib/autobahn":171}],169:[function(require,module,exports){
 ///////////////////////////////////////////////////////////////////////////////
 //
 //  AutobahnJS - http://autobahn.ws, http://wamp.ws
@@ -43954,7 +46854,7 @@ function sign (key, challenge) {
 exports.sign = sign;
 exports.derive_key = derive_key;
 
-},{"crypto-js":194}],169:[function(require,module,exports){
+},{"crypto-js":195}],170:[function(require,module,exports){
 ///////////////////////////////////////////////////////////////////////////////
 //
 //  AutobahnJS - http://autobahn.ws, http://wamp.ws
@@ -44008,7 +46908,7 @@ function auth(session, user, extra) {
 
 exports.auth = auth;
 
-},{"when":257,"when/function":233}],170:[function(require,module,exports){
+},{"when":258,"when/function":234}],171:[function(require,module,exports){
 (function (global){
 ///////////////////////////////////////////////////////////////////////////////
 //
@@ -44072,7 +46972,7 @@ exports.util = util;
 exports.log = log;
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"../package.json":221,"./auth/cra.js":168,"./auth/persona.js":169,"./configure.js":171,"./connection.js":172,"./log.js":173,"./polyfill.js":174,"./session.js":182,"./util.js":185,"when":257,"when/monitor/console":255}],171:[function(require,module,exports){
+},{"../package.json":222,"./auth/cra.js":169,"./auth/persona.js":170,"./configure.js":172,"./connection.js":173,"./log.js":174,"./polyfill.js":175,"./session.js":183,"./util.js":186,"when":258,"when/monitor/console":256}],172:[function(require,module,exports){
 ///////////////////////////////////////////////////////////////////////////////
 //
 //  AutobahnJS - http://autobahn.ws, http://wamp.ws
@@ -44132,7 +47032,7 @@ _transports.register("longpoll", longpoll.Factory);
 
 exports.transports = _transports;
 
-},{"./transport/longpoll.js":183,"./transport/websocket.js":184}],172:[function(require,module,exports){
+},{"./transport/longpoll.js":184,"./transport/websocket.js":185}],173:[function(require,module,exports){
 (function (global){
 ///////////////////////////////////////////////////////////////////////////////
 //
@@ -44621,7 +47521,7 @@ Object.defineProperty(Connection.prototype, "isRetrying", {
 exports.Connection = Connection;
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./autobahn.js":170,"./log.js":173,"./session.js":182,"./util.js":185,"when":257}],173:[function(require,module,exports){
+},{"./autobahn.js":171,"./log.js":174,"./session.js":183,"./util.js":186,"when":258}],174:[function(require,module,exports){
 (function (global){
 ///////////////////////////////////////////////////////////////////////////////
 //
@@ -44648,7 +47548,7 @@ if ('AUTOBAHN_DEBUG' in global && AUTOBAHN_DEBUG && 'console' in global) {
 exports.debug = debug;
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],174:[function(require,module,exports){
+},{}],175:[function(require,module,exports){
 require('./polyfill/object');
 require('./polyfill/array');
 require('./polyfill/string');
@@ -44657,7 +47557,7 @@ require('./polyfill/console');
 require('./polyfill/typedarray');
 require('./polyfill/json');
 
-},{"./polyfill/array":175,"./polyfill/console":176,"./polyfill/function":177,"./polyfill/json":178,"./polyfill/object":179,"./polyfill/string":180,"./polyfill/typedarray":181}],175:[function(require,module,exports){
+},{"./polyfill/array":176,"./polyfill/console":177,"./polyfill/function":178,"./polyfill/json":179,"./polyfill/object":180,"./polyfill/string":181,"./polyfill/typedarray":182}],176:[function(require,module,exports){
 if ( 'function' !== typeof Array.prototype.reduce ) {
   Array.prototype.reduce = function( callback /*, initialValue*/ ) {
     'use strict';
@@ -44782,7 +47682,7 @@ if ( 'function' !== typeof Array.prototype.reduceRight ) {
     return value;
   };
 }
-},{}],176:[function(require,module,exports){
+},{}],177:[function(require,module,exports){
 (function (global){
 
 (function(console) {
@@ -44881,7 +47781,7 @@ if ( 'function' !== typeof Array.prototype.reduceRight ) {
 
 })(global.console);
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],177:[function(require,module,exports){
+},{}],178:[function(require,module,exports){
 if (!Function.prototype.bind) {
   //credits: taken from bind_even_never in this discussion: https://prototype.lighthouseapp.com/projects/8886/tickets/215-optimize-bind-bindaseventlistener#ticket-215-9
   Function.prototype.bind = function(context) {
@@ -44891,7 +47791,7 @@ if (!Function.prototype.bind) {
      };
   };
 }
-},{}],178:[function(require,module,exports){
+},{}],179:[function(require,module,exports){
 /*
     json2.js
     2014-02-04
@@ -45383,7 +48283,7 @@ if (typeof JSON !== 'object') {
 }());
 
 exports.JSON = JSON;
-},{}],179:[function(require,module,exports){
+},{}],180:[function(require,module,exports){
 if (!Object.create) {
     Object.create = (function(){
         function F(){}
@@ -45438,7 +48338,7 @@ if (!Object.keys) {
     };
   }());
 }
-},{}],180:[function(require,module,exports){
+},{}],181:[function(require,module,exports){
 // Add ECMA262-5 string trim if not supported natively
 //
 if (!('trim' in String.prototype)) {
@@ -45446,7 +48346,7 @@ if (!('trim' in String.prototype)) {
         return this.replace(/^\s+/, '').replace(/\s+$/, '');
     };
 }
-},{}],181:[function(require,module,exports){
+},{}],182:[function(require,module,exports){
 (function (global){
 /*
  Copyright (c) 2010, Linden Research, Inc.
@@ -46623,7 +49523,7 @@ if ('window' in global) {
     }
 }
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],182:[function(require,module,exports){
+},{}],183:[function(require,module,exports){
 (function (global){
 ///////////////////////////////////////////////////////////////////////////////
 //
@@ -48001,7 +50901,7 @@ exports.Registration = Registration;
 exports.Publication = Publication;
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./log.js":173,"./util.js":185,"when":257,"when/function":233}],183:[function(require,module,exports){
+},{"./log.js":174,"./util.js":186,"when":258,"when/function":234}],184:[function(require,module,exports){
 ///////////////////////////////////////////////////////////////////////////////
 //
 //  AutobahnJS - http://autobahn.ws, http://wamp.ws
@@ -48207,7 +51107,7 @@ Factory.prototype.create = function () {
 
 exports.Factory = Factory;
 
-},{"../log.js":173,"../util.js":185,"when":257}],184:[function(require,module,exports){
+},{"../log.js":174,"../util.js":186,"when":258}],185:[function(require,module,exports){
 (function (global){
 ///////////////////////////////////////////////////////////////////////////////
 //
@@ -48412,7 +51312,7 @@ Factory.prototype.create = function () {
 exports.Factory = Factory;
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"../log.js":173,"../util.js":185,"ws":220}],185:[function(require,module,exports){
+},{"../log.js":174,"../util.js":186,"ws":221}],186:[function(require,module,exports){
 (function (global){
 ///////////////////////////////////////////////////////////////////////////////
 //
@@ -48543,7 +51443,7 @@ exports.assert = assert;
 exports.http_post = http_post;
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./log.js":173,"when":257}],186:[function(require,module,exports){
+},{"./log.js":174,"when":258}],187:[function(require,module,exports){
 ;(function (root, factory, undef) {
 	if (typeof exports === "object") {
 		// CommonJS
@@ -48771,7 +51671,7 @@ exports.http_post = http_post;
 	return CryptoJS.AES;
 
 }));
-},{"./cipher-core":187,"./core":188,"./enc-base64":189,"./evpkdf":191,"./md5":196}],187:[function(require,module,exports){
+},{"./cipher-core":188,"./core":189,"./enc-base64":190,"./evpkdf":192,"./md5":197}],188:[function(require,module,exports){
 ;(function (root, factory) {
 	if (typeof exports === "object") {
 		// CommonJS
@@ -49647,7 +52547,7 @@ exports.http_post = http_post;
 
 
 }));
-},{"./core":188}],188:[function(require,module,exports){
+},{"./core":189}],189:[function(require,module,exports){
 ;(function (root, factory) {
 	if (typeof exports === "object") {
 		// CommonJS
@@ -50393,7 +53293,7 @@ exports.http_post = http_post;
 	return CryptoJS;
 
 }));
-},{}],189:[function(require,module,exports){
+},{}],190:[function(require,module,exports){
 ;(function (root, factory) {
 	if (typeof exports === "object") {
 		// CommonJS
@@ -50517,7 +53417,7 @@ exports.http_post = http_post;
 	return CryptoJS.enc.Base64;
 
 }));
-},{"./core":188}],190:[function(require,module,exports){
+},{"./core":189}],191:[function(require,module,exports){
 ;(function (root, factory) {
 	if (typeof exports === "object") {
 		// CommonJS
@@ -50667,7 +53567,7 @@ exports.http_post = http_post;
 	return CryptoJS.enc.Utf16;
 
 }));
-},{"./core":188}],191:[function(require,module,exports){
+},{"./core":189}],192:[function(require,module,exports){
 ;(function (root, factory, undef) {
 	if (typeof exports === "object") {
 		// CommonJS
@@ -50800,7 +53700,7 @@ exports.http_post = http_post;
 	return CryptoJS.EvpKDF;
 
 }));
-},{"./core":188,"./hmac":193,"./sha1":212}],192:[function(require,module,exports){
+},{"./core":189,"./hmac":194,"./sha1":213}],193:[function(require,module,exports){
 ;(function (root, factory, undef) {
 	if (typeof exports === "object") {
 		// CommonJS
@@ -50867,7 +53767,7 @@ exports.http_post = http_post;
 	return CryptoJS.format.Hex;
 
 }));
-},{"./cipher-core":187,"./core":188}],193:[function(require,module,exports){
+},{"./cipher-core":188,"./core":189}],194:[function(require,module,exports){
 ;(function (root, factory) {
 	if (typeof exports === "object") {
 		// CommonJS
@@ -51011,7 +53911,7 @@ exports.http_post = http_post;
 
 
 }));
-},{"./core":188}],194:[function(require,module,exports){
+},{"./core":189}],195:[function(require,module,exports){
 ;(function (root, factory, undef) {
 	if (typeof exports === "object") {
 		// CommonJS
@@ -51030,7 +53930,7 @@ exports.http_post = http_post;
 	return CryptoJS;
 
 }));
-},{"./aes":186,"./cipher-core":187,"./core":188,"./enc-base64":189,"./enc-utf16":190,"./evpkdf":191,"./format-hex":192,"./hmac":193,"./lib-typedarrays":195,"./md5":196,"./mode-cfb":197,"./mode-ctr":199,"./mode-ctr-gladman":198,"./mode-ecb":200,"./mode-ofb":201,"./pad-ansix923":202,"./pad-iso10126":203,"./pad-iso97971":204,"./pad-nopadding":205,"./pad-zeropadding":206,"./pbkdf2":207,"./rabbit":209,"./rabbit-legacy":208,"./rc4":210,"./ripemd160":211,"./sha1":212,"./sha224":213,"./sha256":214,"./sha3":215,"./sha384":216,"./sha512":217,"./tripledes":218,"./x64-core":219}],195:[function(require,module,exports){
+},{"./aes":187,"./cipher-core":188,"./core":189,"./enc-base64":190,"./enc-utf16":191,"./evpkdf":192,"./format-hex":193,"./hmac":194,"./lib-typedarrays":196,"./md5":197,"./mode-cfb":198,"./mode-ctr":200,"./mode-ctr-gladman":199,"./mode-ecb":201,"./mode-ofb":202,"./pad-ansix923":203,"./pad-iso10126":204,"./pad-iso97971":205,"./pad-nopadding":206,"./pad-zeropadding":207,"./pbkdf2":208,"./rabbit":210,"./rabbit-legacy":209,"./rc4":211,"./ripemd160":212,"./sha1":213,"./sha224":214,"./sha256":215,"./sha3":216,"./sha384":217,"./sha512":218,"./tripledes":219,"./x64-core":220}],196:[function(require,module,exports){
 ;(function (root, factory) {
 	if (typeof exports === "object") {
 		// CommonJS
@@ -51107,7 +54007,7 @@ exports.http_post = http_post;
 	return CryptoJS.lib.WordArray;
 
 }));
-},{"./core":188}],196:[function(require,module,exports){
+},{"./core":189}],197:[function(require,module,exports){
 ;(function (root, factory) {
 	if (typeof exports === "object") {
 		// CommonJS
@@ -51376,7 +54276,7 @@ exports.http_post = http_post;
 	return CryptoJS.MD5;
 
 }));
-},{"./core":188}],197:[function(require,module,exports){
+},{"./core":189}],198:[function(require,module,exports){
 ;(function (root, factory, undef) {
 	if (typeof exports === "object") {
 		// CommonJS
@@ -51455,7 +54355,7 @@ exports.http_post = http_post;
 	return CryptoJS.mode.CFB;
 
 }));
-},{"./cipher-core":187,"./core":188}],198:[function(require,module,exports){
+},{"./cipher-core":188,"./core":189}],199:[function(require,module,exports){
 ;(function (root, factory, undef) {
 	if (typeof exports === "object") {
 		// CommonJS
@@ -51572,7 +54472,7 @@ exports.http_post = http_post;
 	return CryptoJS.mode.CTRGladman;
 
 }));
-},{"./cipher-core":187,"./core":188}],199:[function(require,module,exports){
+},{"./cipher-core":188,"./core":189}],200:[function(require,module,exports){
 ;(function (root, factory, undef) {
 	if (typeof exports === "object") {
 		// CommonJS
@@ -51631,7 +54531,7 @@ exports.http_post = http_post;
 	return CryptoJS.mode.CTR;
 
 }));
-},{"./cipher-core":187,"./core":188}],200:[function(require,module,exports){
+},{"./cipher-core":188,"./core":189}],201:[function(require,module,exports){
 ;(function (root, factory, undef) {
 	if (typeof exports === "object") {
 		// CommonJS
@@ -51672,7 +54572,7 @@ exports.http_post = http_post;
 	return CryptoJS.mode.ECB;
 
 }));
-},{"./cipher-core":187,"./core":188}],201:[function(require,module,exports){
+},{"./cipher-core":188,"./core":189}],202:[function(require,module,exports){
 ;(function (root, factory, undef) {
 	if (typeof exports === "object") {
 		// CommonJS
@@ -51727,7 +54627,7 @@ exports.http_post = http_post;
 	return CryptoJS.mode.OFB;
 
 }));
-},{"./cipher-core":187,"./core":188}],202:[function(require,module,exports){
+},{"./cipher-core":188,"./core":189}],203:[function(require,module,exports){
 ;(function (root, factory, undef) {
 	if (typeof exports === "object") {
 		// CommonJS
@@ -51777,7 +54677,7 @@ exports.http_post = http_post;
 	return CryptoJS.pad.Ansix923;
 
 }));
-},{"./cipher-core":187,"./core":188}],203:[function(require,module,exports){
+},{"./cipher-core":188,"./core":189}],204:[function(require,module,exports){
 ;(function (root, factory, undef) {
 	if (typeof exports === "object") {
 		// CommonJS
@@ -51822,7 +54722,7 @@ exports.http_post = http_post;
 	return CryptoJS.pad.Iso10126;
 
 }));
-},{"./cipher-core":187,"./core":188}],204:[function(require,module,exports){
+},{"./cipher-core":188,"./core":189}],205:[function(require,module,exports){
 ;(function (root, factory, undef) {
 	if (typeof exports === "object") {
 		// CommonJS
@@ -51863,7 +54763,7 @@ exports.http_post = http_post;
 	return CryptoJS.pad.Iso97971;
 
 }));
-},{"./cipher-core":187,"./core":188}],205:[function(require,module,exports){
+},{"./cipher-core":188,"./core":189}],206:[function(require,module,exports){
 ;(function (root, factory, undef) {
 	if (typeof exports === "object") {
 		// CommonJS
@@ -51894,7 +54794,7 @@ exports.http_post = http_post;
 	return CryptoJS.pad.NoPadding;
 
 }));
-},{"./cipher-core":187,"./core":188}],206:[function(require,module,exports){
+},{"./cipher-core":188,"./core":189}],207:[function(require,module,exports){
 ;(function (root, factory, undef) {
 	if (typeof exports === "object") {
 		// CommonJS
@@ -51940,7 +54840,7 @@ exports.http_post = http_post;
 	return CryptoJS.pad.ZeroPadding;
 
 }));
-},{"./cipher-core":187,"./core":188}],207:[function(require,module,exports){
+},{"./cipher-core":188,"./core":189}],208:[function(require,module,exports){
 ;(function (root, factory, undef) {
 	if (typeof exports === "object") {
 		// CommonJS
@@ -52086,7 +54986,7 @@ exports.http_post = http_post;
 	return CryptoJS.PBKDF2;
 
 }));
-},{"./core":188,"./hmac":193,"./sha1":212}],208:[function(require,module,exports){
+},{"./core":189,"./hmac":194,"./sha1":213}],209:[function(require,module,exports){
 ;(function (root, factory, undef) {
 	if (typeof exports === "object") {
 		// CommonJS
@@ -52277,7 +55177,7 @@ exports.http_post = http_post;
 	return CryptoJS.RabbitLegacy;
 
 }));
-},{"./cipher-core":187,"./core":188,"./enc-base64":189,"./evpkdf":191,"./md5":196}],209:[function(require,module,exports){
+},{"./cipher-core":188,"./core":189,"./enc-base64":190,"./evpkdf":192,"./md5":197}],210:[function(require,module,exports){
 ;(function (root, factory, undef) {
 	if (typeof exports === "object") {
 		// CommonJS
@@ -52470,7 +55370,7 @@ exports.http_post = http_post;
 	return CryptoJS.Rabbit;
 
 }));
-},{"./cipher-core":187,"./core":188,"./enc-base64":189,"./evpkdf":191,"./md5":196}],210:[function(require,module,exports){
+},{"./cipher-core":188,"./core":189,"./enc-base64":190,"./evpkdf":192,"./md5":197}],211:[function(require,module,exports){
 ;(function (root, factory, undef) {
 	if (typeof exports === "object") {
 		// CommonJS
@@ -52610,7 +55510,7 @@ exports.http_post = http_post;
 	return CryptoJS.RC4;
 
 }));
-},{"./cipher-core":187,"./core":188,"./enc-base64":189,"./evpkdf":191,"./md5":196}],211:[function(require,module,exports){
+},{"./cipher-core":188,"./core":189,"./enc-base64":190,"./evpkdf":192,"./md5":197}],212:[function(require,module,exports){
 ;(function (root, factory) {
 	if (typeof exports === "object") {
 		// CommonJS
@@ -52878,7 +55778,7 @@ exports.http_post = http_post;
 	return CryptoJS.RIPEMD160;
 
 }));
-},{"./core":188}],212:[function(require,module,exports){
+},{"./core":189}],213:[function(require,module,exports){
 ;(function (root, factory) {
 	if (typeof exports === "object") {
 		// CommonJS
@@ -53029,7 +55929,7 @@ exports.http_post = http_post;
 	return CryptoJS.SHA1;
 
 }));
-},{"./core":188}],213:[function(require,module,exports){
+},{"./core":189}],214:[function(require,module,exports){
 ;(function (root, factory, undef) {
 	if (typeof exports === "object") {
 		// CommonJS
@@ -53110,7 +56010,7 @@ exports.http_post = http_post;
 	return CryptoJS.SHA224;
 
 }));
-},{"./core":188,"./sha256":214}],214:[function(require,module,exports){
+},{"./core":189,"./sha256":215}],215:[function(require,module,exports){
 ;(function (root, factory) {
 	if (typeof exports === "object") {
 		// CommonJS
@@ -53310,7 +56210,7 @@ exports.http_post = http_post;
 	return CryptoJS.SHA256;
 
 }));
-},{"./core":188}],215:[function(require,module,exports){
+},{"./core":189}],216:[function(require,module,exports){
 ;(function (root, factory, undef) {
 	if (typeof exports === "object") {
 		// CommonJS
@@ -53634,7 +56534,7 @@ exports.http_post = http_post;
 	return CryptoJS.SHA3;
 
 }));
-},{"./core":188,"./x64-core":219}],216:[function(require,module,exports){
+},{"./core":189,"./x64-core":220}],217:[function(require,module,exports){
 ;(function (root, factory, undef) {
 	if (typeof exports === "object") {
 		// CommonJS
@@ -53718,7 +56618,7 @@ exports.http_post = http_post;
 	return CryptoJS.SHA384;
 
 }));
-},{"./core":188,"./sha512":217,"./x64-core":219}],217:[function(require,module,exports){
+},{"./core":189,"./sha512":218,"./x64-core":220}],218:[function(require,module,exports){
 ;(function (root, factory, undef) {
 	if (typeof exports === "object") {
 		// CommonJS
@@ -54042,7 +56942,7 @@ exports.http_post = http_post;
 	return CryptoJS.SHA512;
 
 }));
-},{"./core":188,"./x64-core":219}],218:[function(require,module,exports){
+},{"./core":189,"./x64-core":220}],219:[function(require,module,exports){
 ;(function (root, factory, undef) {
 	if (typeof exports === "object") {
 		// CommonJS
@@ -54813,7 +57713,7 @@ exports.http_post = http_post;
 	return CryptoJS.TripleDES;
 
 }));
-},{"./cipher-core":187,"./core":188,"./enc-base64":189,"./evpkdf":191,"./md5":196}],219:[function(require,module,exports){
+},{"./cipher-core":188,"./core":189,"./enc-base64":190,"./evpkdf":192,"./md5":197}],220:[function(require,module,exports){
 ;(function (root, factory) {
 	if (typeof exports === "object") {
 		// CommonJS
@@ -55118,7 +58018,7 @@ exports.http_post = http_post;
 	return CryptoJS;
 
 }));
-},{"./core":188}],220:[function(require,module,exports){
+},{"./core":189}],221:[function(require,module,exports){
 
 /**
  * Module dependencies.
@@ -55163,7 +58063,7 @@ function ws(uri, protocols, opts) {
 
 if (WebSocket) ws.prototype = WebSocket.prototype;
 
-},{}],221:[function(require,module,exports){
+},{}],222:[function(require,module,exports){
 module.exports={
   "name": "autobahn",
   "version": "0.9.6",
@@ -55222,7 +58122,7 @@ module.exports={
   "readme": "ERROR: No README data found!"
 }
 
-},{}],222:[function(require,module,exports){
+},{}],223:[function(require,module,exports){
 /*! @license Firebase v2.2.5
     License: https://www.firebase.com/terms/terms-of-service.html */
 (function() {var h,aa=this;function n(a){return void 0!==a}function ba(){}function ca(a){a.ub=function(){return a.tf?a.tf:a.tf=new a}}
@@ -55488,7 +58388,7 @@ function Nc(a,b){J(!b||!0===a||!1===a,"Can't turn on custom loggers persistently
 
 module.exports = Firebase;
 
-},{}],223:[function(require,module,exports){
+},{}],224:[function(require,module,exports){
 (function (global){
 module.exports = false;
 
@@ -55498,7 +58398,7 @@ try {
 } catch(e) {}
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],224:[function(require,module,exports){
+},{}],225:[function(require,module,exports){
 (function (global){
 // Intravenous JavaScript library v0.1.4-beta
 // (c) Roy Jacobs
@@ -55959,7 +58859,7 @@ exportSymbol('version', intravenous.version);
 })(typeof window !== "undefined" ? window : global);
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],225:[function(require,module,exports){
+},{}],226:[function(require,module,exports){
 (function (global){
 Math.trueRandom = (function () {
 	if (global.crypto && crypto.getRandomValues) {
@@ -56062,7 +58962,7 @@ if( typeof module !== "undefined" && ('exports' in module)){
 	module.exports = uuid;
 }
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],226:[function(require,module,exports){
+},{}],227:[function(require,module,exports){
 var property = (function(){
 	var defineProperty = function(obj, name, get, set){
 		if(Object.defineProperty){
@@ -56219,7 +59119,7 @@ var property = (function(){
 if(typeof module !== 'undefined'){
 	module.exports = property;
 }
-},{}],227:[function(require,module,exports){
+},{}],228:[function(require,module,exports){
 /*
  * Stately.js: A JavaScript based finite-state machine (FSM) engine.
  *
@@ -56519,22 +59419,22 @@ if(typeof module !== 'undefined'){
 
 });
 
-},{}],228:[function(require,module,exports){
+},{}],229:[function(require,module,exports){
 (function(){module.exports={CoreObject:require("./modules/core.object"),Observable:require("./modules/observable"),Stateful:require("./modules/stateful"),Composer:require("./modules/composer")}}).call(this);
 
-},{"./modules/composer":229,"./modules/core.object":230,"./modules/observable":231,"./modules/stateful":232}],229:[function(require,module,exports){
+},{"./modules/composer":230,"./modules/core.object":231,"./modules/observable":232,"./modules/stateful":233}],230:[function(require,module,exports){
 (function(){var t,o,r,e=function(t,o){function r(){this.constructor=t}for(var e in o)n.call(o,e)&&(t[e]=o[e]);return r.prototype=o.prototype,t.prototype=new r,t.__super__=o.prototype,t},n={}.hasOwnProperty;o=require("./core.object"),r=require("intravenous"),t=function(t){function o(){o.__super__.constructor.call(this),this.catalog={}}return e(o,t),o.prototype.from=function(t){return this.catalog[t]=this.catalog[t]||r.create()},o}(o),module.exports=t}).call(this);
 
-},{"./core.object":230,"intravenous":224}],230:[function(require,module,exports){
+},{"./core.object":231,"intravenous":225}],231:[function(require,module,exports){
 (function(){var t,e,r,n,i,o,u=function(t,e){function r(){this.constructor=t}for(var n in e)p.call(e,n)&&(t[n]=e[n]);return r.prototype=e.prototype,t.prototype=new r,t.__super__=e.prototype,t},p={}.hasOwnProperty,s=[].indexOf||function(t){for(var e=0,r=this.length;r>e;e++)if(e in this&&this[e]===t)return e;return-1};e=require("lodash"),i=require("detect-node"),o=require("portable-uuid"),r=require("events"),n=["extended","included"],t=function(t){function r(t){r.__super__.constructor.call(this),this.uuid=o(),this.node=i,this.options=e.extend({},t)}return u(r,t),r.prototype.extend=function(t){var e,r,i;for(e in t)i=t[e],s.call(n,e)<0&&(this[e]=i);return null!=(r=t.extended)&&r.apply(this),this},r.prototype.include=function(t){var e,r,i;for(e in t)i=t[e],s.call(n,e)<0&&(this.prototype[e]=i);return null!=(r=t.included)&&r.apply(this),this},r}(r.EventEmitter),module.exports=t}).call(this);
 
-},{"detect-node":223,"events":4,"lodash":9,"portable-uuid":225}],231:[function(require,module,exports){
+},{"detect-node":224,"events":4,"lodash":10,"portable-uuid":226}],232:[function(require,module,exports){
 (function(){var t,r,e,o=function(t,r){function e(){this.constructor=t}for(var o in r)n.call(r,o)&&(t[o]=r[o]);return e.prototype=r.prototype,t.prototype=new e,t.__super__=r.prototype,t},n={}.hasOwnProperty;t=require("./core.object"),e=require("property.js"),r=function(t){function r(t,o){r.__super__.constructor.call(this,o),e.mixin(this),Object.keys(t).forEach(function(r){return this.addProperty(r,t[r]).observe(function(t,e){return t!==e?this.emit("change",this,{key:r,oldValue:t,newValue:e}):void 0})},this)}return o(r,t),r}(t),module.exports=r}).call(this);
 
-},{"./core.object":230,"property.js":226}],232:[function(require,module,exports){
+},{"./core.object":231,"property.js":227}],233:[function(require,module,exports){
 (function(){var t,e,r,i,n,o=function(t,e){function r(){this.constructor=t}for(var i in e)s.call(e,i)&&(t[i]=e[i]);return r.prototype=e.prototype,t.prototype=new r,t.__super__=e.prototype,t},s={}.hasOwnProperty;t=require("./core.object"),r=require("stately.js"),i=require("when"),n=require("lodash"),e=function(t){function e(t,i){e.__super__.constructor.call(this),this.machine=r.machine(t,i),this.state=function(){return this.machine.getMachineState()},this.machine.bind(function(t,e,r){var i;return i={event:t,oldState:e,newState:r},this.emit(t,this,i),e!==r?this.emit(r,this,i):void 0}.bind(this))}return o(e,t),e.prototype.apply=function(){var t;return t=Array.prototype.slice.call(arguments,1),this.machine[arguments[0]].apply(this,t),this},e.prototype.promise=function(){var t,e;return e=i.defer(),t=Array.prototype.slice.call(arguments,1),this.apply.apply(this,[arguments[0],this,e].concat(t)),e.promise},e}(t),module.exports=e}).call(this);
 
-},{"./core.object":230,"lodash":9,"stately.js":227,"when":257}],233:[function(require,module,exports){
+},{"./core.object":231,"lodash":10,"stately.js":228,"when":258}],234:[function(require,module,exports){
 /** @license MIT License (c) copyright 2013-2014 original author or authors */
 
 /**
@@ -56640,7 +59540,7 @@ define(function(require) {
 
 
 
-},{"./lib/apply":237,"./lib/liftAll":249,"./when":257}],234:[function(require,module,exports){
+},{"./lib/apply":238,"./lib/liftAll":250,"./when":258}],235:[function(require,module,exports){
 /** @license MIT License (c) copyright 2010-2014 original author or authors */
 /** @author Brian Cavalier */
 /** @author John Hann */
@@ -56659,7 +59559,7 @@ define(function (require) {
 });
 })(typeof define === 'function' && define.amd ? define : function (factory) { module.exports = factory(require); });
 
-},{"./Scheduler":235,"./env":247,"./makePromise":250}],235:[function(require,module,exports){
+},{"./Scheduler":236,"./env":248,"./makePromise":251}],236:[function(require,module,exports){
 /** @license MIT License (c) copyright 2010-2014 original author or authors */
 /** @author Brian Cavalier */
 /** @author John Hann */
@@ -56741,7 +59641,7 @@ define(function() {
 });
 }(typeof define === 'function' && define.amd ? define : function(factory) { module.exports = factory(); }));
 
-},{}],236:[function(require,module,exports){
+},{}],237:[function(require,module,exports){
 /** @license MIT License (c) copyright 2010-2014 original author or authors */
 /** @author Brian Cavalier */
 /** @author John Hann */
@@ -56769,7 +59669,7 @@ define(function() {
 	return TimeoutError;
 });
 }(typeof define === 'function' && define.amd ? define : function(factory) { module.exports = factory(); }));
-},{}],237:[function(require,module,exports){
+},{}],238:[function(require,module,exports){
 /** @license MIT License (c) copyright 2010-2014 original author or authors */
 /** @author Brian Cavalier */
 /** @author John Hann */
@@ -56826,7 +59726,7 @@ define(function() {
 
 
 
-},{}],238:[function(require,module,exports){
+},{}],239:[function(require,module,exports){
 /** @license MIT License (c) copyright 2010-2014 original author or authors */
 /** @author Brian Cavalier */
 /** @author John Hann */
@@ -57117,7 +60017,7 @@ define(function(require) {
 });
 }(typeof define === 'function' && define.amd ? define : function(factory) { module.exports = factory(require); }));
 
-},{"../apply":237,"../state":251}],239:[function(require,module,exports){
+},{"../apply":238,"../state":252}],240:[function(require,module,exports){
 /** @license MIT License (c) copyright 2010-2014 original author or authors */
 /** @author Brian Cavalier */
 /** @author John Hann */
@@ -57279,7 +60179,7 @@ define(function() {
 });
 }(typeof define === 'function' && define.amd ? define : function(factory) { module.exports = factory(); }));
 
-},{}],240:[function(require,module,exports){
+},{}],241:[function(require,module,exports){
 /** @license MIT License (c) copyright 2010-2014 original author or authors */
 /** @author Brian Cavalier */
 /** @author John Hann */
@@ -57308,7 +60208,7 @@ define(function() {
 });
 }(typeof define === 'function' && define.amd ? define : function(factory) { module.exports = factory(); }));
 
-},{}],241:[function(require,module,exports){
+},{}],242:[function(require,module,exports){
 /** @license MIT License (c) copyright 2010-2014 original author or authors */
 /** @author Brian Cavalier */
 /** @author John Hann */
@@ -57330,7 +60230,7 @@ define(function(require) {
 });
 }(typeof define === 'function' && define.amd ? define : function(factory) { module.exports = factory(require); }));
 
-},{"../state":251}],242:[function(require,module,exports){
+},{"../state":252}],243:[function(require,module,exports){
 /** @license MIT License (c) copyright 2010-2014 original author or authors */
 /** @author Brian Cavalier */
 /** @author John Hann */
@@ -57397,7 +60297,7 @@ define(function() {
 });
 }(typeof define === 'function' && define.amd ? define : function(factory) { module.exports = factory(); }));
 
-},{}],243:[function(require,module,exports){
+},{}],244:[function(require,module,exports){
 /** @license MIT License (c) copyright 2010-2014 original author or authors */
 /** @author Brian Cavalier */
 /** @author John Hann */
@@ -57423,7 +60323,7 @@ define(function() {
 });
 }(typeof define === 'function' && define.amd ? define : function(factory) { module.exports = factory(); }));
 
-},{}],244:[function(require,module,exports){
+},{}],245:[function(require,module,exports){
 /** @license MIT License (c) copyright 2010-2014 original author or authors */
 /** @author Brian Cavalier */
 /** @author John Hann */
@@ -57503,7 +60403,7 @@ define(function(require) {
 });
 }(typeof define === 'function' && define.amd ? define : function(factory) { module.exports = factory(require); }));
 
-},{"../TimeoutError":236,"../env":247}],245:[function(require,module,exports){
+},{"../TimeoutError":237,"../env":248}],246:[function(require,module,exports){
 /** @license MIT License (c) copyright 2010-2014 original author or authors */
 /** @author Brian Cavalier */
 /** @author John Hann */
@@ -57591,7 +60491,7 @@ define(function(require) {
 });
 }(typeof define === 'function' && define.amd ? define : function(factory) { module.exports = factory(require); }));
 
-},{"../env":247,"../format":248}],246:[function(require,module,exports){
+},{"../env":248,"../format":249}],247:[function(require,module,exports){
 /** @license MIT License (c) copyright 2010-2014 original author or authors */
 /** @author Brian Cavalier */
 /** @author John Hann */
@@ -57631,7 +60531,7 @@ define(function() {
 }(typeof define === 'function' && define.amd ? define : function(factory) { module.exports = factory(); }));
 
 
-},{}],247:[function(require,module,exports){
+},{}],248:[function(require,module,exports){
 (function (process){
 /** @license MIT License (c) copyright 2010-2014 original author or authors */
 /** @author Brian Cavalier */
@@ -57708,7 +60608,7 @@ define(function(require) {
 }(typeof define === 'function' && define.amd ? define : function(factory) { module.exports = factory(require); }));
 
 }).call(this,require('_process'))
-},{"_process":6}],248:[function(require,module,exports){
+},{"_process":6}],249:[function(require,module,exports){
 /** @license MIT License (c) copyright 2010-2014 original author or authors */
 /** @author Brian Cavalier */
 /** @author John Hann */
@@ -57766,7 +60666,7 @@ define(function() {
 });
 }(typeof define === 'function' && define.amd ? define : function(factory) { module.exports = factory(); }));
 
-},{}],249:[function(require,module,exports){
+},{}],250:[function(require,module,exports){
 /** @license MIT License (c) copyright 2010-2014 original author or authors */
 /** @author Brian Cavalier */
 /** @author John Hann */
@@ -57796,7 +60696,7 @@ define(function() {
 });
 }(typeof define === 'function' && define.amd ? define : function(factory) { module.exports = factory(); }));
 
-},{}],250:[function(require,module,exports){
+},{}],251:[function(require,module,exports){
 (function (process){
 /** @license MIT License (c) copyright 2010-2014 original author or authors */
 /** @author Brian Cavalier */
@@ -58727,7 +61627,7 @@ define(function() {
 }(typeof define === 'function' && define.amd ? define : function(factory) { module.exports = factory(); }));
 
 }).call(this,require('_process'))
-},{"_process":6}],251:[function(require,module,exports){
+},{"_process":6}],252:[function(require,module,exports){
 /** @license MIT License (c) copyright 2010-2014 original author or authors */
 /** @author Brian Cavalier */
 /** @author John Hann */
@@ -58764,7 +61664,7 @@ define(function() {
 });
 }(typeof define === 'function' && define.amd ? define : function(factory) { module.exports = factory(); }));
 
-},{}],252:[function(require,module,exports){
+},{}],253:[function(require,module,exports){
 /** @license MIT License (c) copyright 2010-2014 original author or authors */
 /** @author Brian Cavalier */
 /** @author John Hann */
@@ -58783,7 +61683,7 @@ define(function(require) {
 });
 }(typeof define === 'function' && define.amd ? define : function(factory) { module.exports = factory(require); }));
 
-},{"./monitor/ConsoleReporter":253,"./monitor/PromiseMonitor":254}],253:[function(require,module,exports){
+},{"./monitor/ConsoleReporter":254,"./monitor/PromiseMonitor":255}],254:[function(require,module,exports){
 /** @license MIT License (c) copyright 2010-2014 original author or authors */
 /** @author Brian Cavalier */
 /** @author John Hann */
@@ -58891,7 +61791,7 @@ define(function(require) {
 });
 }(typeof define === 'function' && define.amd ? define : function(factory) { module.exports = factory(require); }));
 
-},{"./error":256}],254:[function(require,module,exports){
+},{"./error":257}],255:[function(require,module,exports){
 /** @license MIT License (c) copyright 2010-2014 original author or authors */
 /** @author Brian Cavalier */
 /** @author John Hann */
@@ -59090,7 +61990,7 @@ define(function(require) {
 });
 }(typeof define === 'function' && define.amd ? define : function(factory) { module.exports = factory(require); }));
 
-},{"../lib/env":247,"./error":256}],255:[function(require,module,exports){
+},{"../lib/env":248,"./error":257}],256:[function(require,module,exports){
 /** @license MIT License (c) copyright 2010-2014 original author or authors */
 /** @author Brian Cavalier */
 /** @author John Hann */
@@ -59106,7 +62006,7 @@ define(function(require) {
 });
 }(typeof define === 'function' && define.amd ? define : function(factory) { module.exports = factory(require); }));
 
-},{"../monitor":252,"../when":257}],256:[function(require,module,exports){
+},{"../monitor":253,"../when":258}],257:[function(require,module,exports){
 /** @license MIT License (c) copyright 2010-2014 original author or authors */
 /** @author Brian Cavalier */
 /** @author John Hann */
@@ -59194,7 +62094,7 @@ define(function() {
 });
 }(typeof define === 'function' && define.amd ? define : function(factory) { module.exports = factory(); }));
 
-},{}],257:[function(require,module,exports){
+},{}],258:[function(require,module,exports){
 /** @license MIT License (c) copyright 2010-2014 original author or authors */
 
 /**
@@ -59424,17 +62324,17 @@ define(function (require) {
 });
 })(typeof define === 'function' && define.amd ? define : function (factory) { module.exports = factory(require); });
 
-},{"./lib/Promise":234,"./lib/TimeoutError":236,"./lib/apply":237,"./lib/decorators/array":238,"./lib/decorators/flow":239,"./lib/decorators/fold":240,"./lib/decorators/inspect":241,"./lib/decorators/iterate":242,"./lib/decorators/progress":243,"./lib/decorators/timed":244,"./lib/decorators/unhandledRejection":245,"./lib/decorators/with":246}],258:[function(require,module,exports){
+},{"./lib/Promise":235,"./lib/TimeoutError":237,"./lib/apply":238,"./lib/decorators/array":239,"./lib/decorators/flow":240,"./lib/decorators/fold":241,"./lib/decorators/inspect":242,"./lib/decorators/iterate":243,"./lib/decorators/progress":244,"./lib/decorators/timed":245,"./lib/decorators/unhandledRejection":246,"./lib/decorators/with":247}],259:[function(require,module,exports){
 (function(){module.exports={Broker:require("./modules/broker"),Firebase:require("./modules/firebase.context")}}).call(this);
 
-},{"./modules/broker":259,"./modules/firebase.context":260}],259:[function(require,module,exports){
+},{"./modules/broker":260,"./modules/firebase.context":261}],260:[function(require,module,exports){
 (function(){var n,e,t,r,i,o,s=function(n,e){function t(){this.constructor=n}for(var r in e)c.call(e,r)&&(n[r]=e[r]);return t.prototype=e.prototype,n.prototype=new t,n.__super__=e.prototype,n},c={}.hasOwnProperty;e=require("sublime-core"),i=require("autobahn"),t=require("when"),r=require("lodash"),o={disconnected:{connect:function(n,e){n.connection.onopen=function(t){return function(r,i){n.session=r,t.setMachineState(t.connected),e.resolve(n)}}(this),n.connection.open()}},connected:{disconnect:function(n,e){n.connection.onclose=function(t){return function(r,i){n.session=null,t.setMachineState(t.disconnected),e.resolve(n)}}(this),n.connection.close()},subscribe:function(n,e,t,r){n.session.subscribe(e,t).then(function(i){var o;o={subscription:i,fn:t},n.channels[e]=n.channels[e]||[],n.channels[e].push(o),r.resolve(n)},function(n){r.reject(n)})},unsubscribe:function(n,e,r,i){var o;n.channels[e]&&(o=n.channels[e].filter(function(n){return n.fn===r}).map(function(e){return n.session.unsubscribe(e.subscription)}),t.all(o).then(function(){n.channels[e]=n.channels[e].filter(function(n){return n.fn!==r}),0===n.channels[e].length&&(n.channels[e]=null),i.resolve(n)},function(n){i.reject(n)}))},publish:function(n,e,t,i,o){i=r.extend({acknowledge:!0,exclude_me:!0},i),Array.isArray(t)||(t=[t]),n.session.publish(e,t,{},i).then(function(){o.resolve(n)},function(n){o.reject(n)})},register:function(n,e,t,r,i){n.session.register(e,t,r).then(function(){i.resolve(n)},function(n){i.reject(n)})},unregister:function(n,e,r){var i;i=n.session.registrations.filter(function(n){return n.procedure===e}).map(function(e){return n.session.unregister(e)}),t.all(i).then(function(){r.resolve(n)},function(n){r.reject(n)})},call:function(n,e,t,r,i){Array.isArray(t)||(t=[t]),n.session.call(e,t,{},r).then(function(n){i.resolve(n)},function(n){i.reject(n)})}}},n=function(n){function e(n,t){e.__super__.constructor.call(this,o),this.channels={},this.uri=n,this.realm=t,this.connection=new i.Connection({url:n,realm:t})}return s(e,n),e.prototype.connect=function(){var n;return n=t.defer(),this.apply("connect",this,n),n.promise},e.prototype.disconnect=function(){var n;return n=t.defer(),this.apply("disconnect",this,n),n.promise},e.prototype.subscribe=function(n,e){var r;return r=t.defer(),this.apply("subscribe",this,n,e,r),r.promise},e.prototype.unsubscribe=function(n,e){var r;return r=t.defer(),this.apply("unsubscribe",this,n,e,r),r.promise},e.prototype.publish=function(n,e,r){var i;return i=t.defer(),this.apply("publish",this,n,e,r,i),i.promise},e.prototype.register=function(n,e,r){var i;return i=t.defer(),this.apply("register",this,n,e,r,i),i.promise},e.prototype.unregister=function(n){var e;return e=t.defer(),this.apply("unregister",this,n,e),e.promise},e.prototype.call=function(n,e,r){var i;return i=t.defer(),this.apply("call",this,n,e,r,i),i.promise},e}(e.Stateful),module.exports=n}).call(this);
 
-},{"autobahn":167,"lodash":9,"sublime-core":228,"when":257}],260:[function(require,module,exports){
+},{"autobahn":168,"lodash":10,"sublime-core":229,"when":258}],261:[function(require,module,exports){
 (function(){var t,r,e,i;t=require("firebase"),i=function(t,r,e){if(r(t))throw console.error(e),new Error(e)},e=function(t,r){var e;return e=function(t){return!t},i(t,e,"*"+r+"* may not be NULL")},r=function(){function r(r){this.ref=new t(r)}return r.prototype.set=function(t,r){var i;return e(t,"path"),e(r,"data"),i=this.ref.child(t),i.set(r)},r.prototype.push=function(t,r){var i;return e(t,"path"),e(r,"data"),i=this.ref.child(t),i.push(r)},r.prototype.remove=function(t){var r;return e(t,"path"),r=this.ref.child(t),r.remove()},r.prototype.update=function(t,r){var i;return e(t,"path"),e(r,"data"),i=this.ref.child(t),i.update(r)},r.prototype.query=function(t,r){var i;return e(t,"path"),i=this.ref.child(t),r&&r.limit&&r.limit>0&&(i=i.limit(r.limit)),r&&r.order&&(i=i.orderByChild(r.order)),i},r}(),module.exports=r}).call(this);
 
-},{"firebase":222}],261:[function(require,module,exports){
-var ContactForm, Footer, Markdown, NavBar, Parallax, ParallaxSection, Projects, React;
+},{"firebase":223}],262:[function(require,module,exports){
+var ContactForm, Footer, Markdown, NavBar, Parallax, ParallaxSection, ProjectList, React;
 
 React = require('react');
 
@@ -59446,7 +62346,7 @@ ParallaxSection = require('./parallax.section');
 
 ContactForm = require('./contact.form');
 
-Projects = require('./projects');
+ProjectList = require('./project.list');
 
 Footer = require('./footer');
 
@@ -59494,7 +62394,9 @@ React.render(React.createElement("div", null, React.createElement(NavBar, {
 }, "Featured projects"))), React.createElement(Parallax, {
   "id": "projects",
   "title": "Featured projects"
-}, React.createElement(Projects, null)), React.createElement(ParallaxSection, {
+}, React.createElement(ProjectList, {
+  "size": "4"
+})), React.createElement(ParallaxSection, {
   "src": "assets/images/background23.jpg"
 }, React.createElement("div", {
   "className": "row center"
@@ -59513,7 +62415,7 @@ React.render(React.createElement("div", null, React.createElement(NavBar, {
   "className": "blue-grey darken-2"
 })), document.getElementById('content'));
 
-},{"./contact.form":262,"./footer":263,"./markdown":265,"./navbar":266,"./parallax":267,"./parallax.section":268,"./projects":270,"react":166}],262:[function(require,module,exports){
+},{"./contact.form":263,"./footer":264,"./markdown":266,"./navbar":267,"./parallax":268,"./parallax.section":269,"./project.list":271,"react":167}],263:[function(require,module,exports){
 var $, ContactForm, React;
 
 React = require('react');
@@ -59582,7 +62484,7 @@ module.exports = ContactForm = React.createClass({
   }
 });
 
-},{"jquery":2,"react":166}],263:[function(require,module,exports){
+},{"jquery":2,"react":167}],264:[function(require,module,exports){
 var Footer, LinkList, React, items;
 
 LinkList = require('./link.list');
@@ -59648,7 +62550,7 @@ module.exports = Footer = React.createClass({
   }
 });
 
-},{"./link.list":264,"react":166}],264:[function(require,module,exports){
+},{"./link.list":265,"react":167}],265:[function(require,module,exports){
 var $, LinkList, React;
 
 $ = require('jquery');
@@ -59674,7 +62576,7 @@ module.exports = LinkList = React.createClass({
   }
 });
 
-},{"jquery":2,"react":166}],265:[function(require,module,exports){
+},{"jquery":2,"react":167}],266:[function(require,module,exports){
 var Markdown, React, markdown;
 
 React = require('react');
@@ -59692,7 +62594,7 @@ module.exports = Markdown = React.createClass({
   }
 });
 
-},{"markdown":10,"react":166}],266:[function(require,module,exports){
+},{"markdown":11,"react":167}],267:[function(require,module,exports){
 var LinkList, NavBar, React, items;
 
 LinkList = require('./link.list');
@@ -59742,7 +62644,7 @@ module.exports = NavBar = React.createClass({
   }
 });
 
-},{"./link.list":264,"react":166}],267:[function(require,module,exports){
+},{"./link.list":265,"react":167}],268:[function(require,module,exports){
 var Parallax, React;
 
 React = require('react');
@@ -59758,7 +62660,7 @@ module.exports = Parallax = React.createClass({
   }
 });
 
-},{"react":166}],268:[function(require,module,exports){
+},{"react":167}],269:[function(require,module,exports){
 var ParallaxSection, React;
 
 React = require('react');
@@ -59781,70 +62683,58 @@ module.exports = ParallaxSection = React.createClass({
   }
 });
 
-},{"react":166}],269:[function(require,module,exports){
-var Project, React;
+},{"react":167}],270:[function(require,module,exports){
+var ProjectListItem, React;
 
 React = require('react');
 
-module.exports = Project = React.createClass({
+module.exports = ProjectListItem = React.createClass({
   render: function() {
     var url;
-    if (!this.props.item) {
-      return React.createElement("div", null);
-    } else {
-      url = "https://ghbtns.com/github-btn.html?user=" + this.props.item.user + "&repo=" + this.props.item.repo + "&type=star&count=false&size=large";
-      return React.createElement("div", {
-        "className": "col l4 m4 s12 center project"
-      }, React.createElement("div", {
-        "className": "card"
-      }, React.createElement("div", {
-        "className": "card-image waves-effect waves-block waves-light"
-      }, React.createElement("img", {
-        "className": "activator",
-        "src": this.props.item.img
-      })), React.createElement("div", {
-        "className": "card-content"
-      }, React.createElement("span", {
-        "className": "card-title activator grey-text text-darken-4"
-      }, this.props.item.title, React.createElement("i", {
-        "className": "mdi-navigation-more-vert right"
-      }))), React.createElement("div", {
-        "className": "card-reveal"
-      }, React.createElement("span", {
-        "className": "card-title grey-text text-darken-4"
-      }, this.props.item.title, React.createElement("i", {
-        "className": "mdi-navigation-close right"
-      })), React.createElement("p", null, this.props.item.summary), React.createElement("iframe", {
-        "src": url,
-        "className": "project-button",
-        "frameBorder": "0",
-        "scrolling": "0"
-      }))));
-    }
+    url = "https://github.com/" + this.props.item.user + "/" + this.props.item.repo;
+    return React.createElement("li", {
+      "className": "collection-item avatar project-list-item"
+    }, React.createElement("i", {
+      "className": this.props.className || 'mdi-file-folder-open circle blue-grey'
+    }), React.createElement("span", {
+      "className": "title"
+    }, this.props.item.title), React.createElement("p", null, this.props.item.summary), React.createElement("a", {
+      "href": url,
+      "className": "secondary-content waves-effect blue-text",
+      "target": "_blank"
+    }, "Github ", React.createElement("i", {
+      "className": "mdi-action-launch"
+    })));
   }
 });
 
-},{"react":166}],270:[function(require,module,exports){
-var $, Project, Projects, React, db;
+},{"react":167}],271:[function(require,module,exports){
+var $, Enumerable, ProjectList, ProjectListItem, React, db;
 
 $ = require('jquery');
 
 React = require('react');
 
-Project = require('./project');
+ProjectListItem = require('./project.list.item');
 
 db = require('../modules/firebase');
 
-module.exports = Projects = React.createClass({
+Enumerable = require('linq');
+
+module.exports = ProjectList = React.createClass({
   getInitialState: function() {
     return {
-      data: []
+      data: [],
+      items: [],
+      size: this.props.size || 5,
+      index: 0,
+      pages: 1
     };
   },
   loadData: function() {
     return db.query('project').on('value', (function(_this) {
       return function(s) {
-        var data, items;
+        var current, data, items, pages;
         items = [];
         data = s.val();
         Object.getOwnPropertyNames(data || {}).forEach(function(key) {
@@ -59853,47 +62743,104 @@ module.exports = Projects = React.createClass({
           item._id = key;
           return items.push(item);
         });
-        return _this.setState({
-          data: items.sort(function(a, b) {
-            return a.title > b.title;
-          })
+        items = items.sort(function(a, b) {
+          return a.title > b.title;
         });
+        pages = items.length / _this.state.size + (items.length % _this.state.size === 0 ? 0 : 1);
+        current = Enumerable.from(items).skip(_this.state.index * _this.state.size).take(_this.state.size).toArray();
+        _this.setState({
+          data: items,
+          pages: pages,
+          items: current
+        });
+        return _this.getDOMNode().classList.remove('hide');
       };
     })(this));
+  },
+  move: function(e) {
+    var page;
+    page = parseInt(e.target.getAttribute('data-page'));
+    return this.moveTo(page);
+  },
+  moveTo: function(page) {
+    page = page < 0 ? 0 : page;
+    page = page >= this.state.pages ? this.state.pages - 1 : page;
+    this.setState({
+      index: page,
+      items: Enumerable.from(this.state.data).skip(page * this.state.size).take(this.state.size).toArray()
+    });
+    $('.pagination li.page.active', this.getDOMNode()).attr('class', 'waves-effect page');
+    return $('.pagination li.page[data-page=' + page + ']', this.getDOMNode()).attr('class', 'active teal page');
+  },
+  prev: function() {
+    var page;
+    page = this.state.index - 1;
+    return this.moveTo(page);
+  },
+  next: function() {
+    var page;
+    page = this.state.index + 1;
+    this.moveTo(page);
+    $('.pagination li.page.active', this.getDOMNode()).attr('class', 'waves-effect page');
+    return $('.pagination li.page[data-page=' + page + ']', this.getDOMNode()).attr('class', 'active teal page');
   },
   componentWillMount: function() {
     return this.loadData();
   },
   render: function() {
-    var rows, x, y;
-    rows = this.state.data.length / 3 + (this.state.data.length % 3 !== 0 ? 1 : 0) - 1;
+    var i;
     return React.createElement("div", {
-      "className": "projects"
+      "className": "project-list row hide"
+    }, React.createElement("ul", {
+      "className": "collection"
     }, (function() {
-      var i, ref, results;
+      var j, len, ref, results;
+      ref = this.state.items;
       results = [];
-      for (y = i = 0, ref = rows; 0 <= ref ? i <= ref : i >= ref; y = 0 <= ref ? ++i : --i) {
-        results.push(React.createElement("div", {
-          "className": "row",
-          "key": y
-        }, (function() {
-          var j, results1;
-          results1 = [];
-          for (x = j = 0; j <= 2; x = ++j) {
-            results1.push(React.createElement(Project, {
-              "key": y * 3 + x,
-              "item": this.state.data[y * 3 + x]
-            }));
-          }
-          return results1;
-        }).call(this)));
+      for (j = 0, len = ref.length; j < len; j++) {
+        i = ref[j];
+        results.push(React.createElement(ProjectListItem, {
+          "item": i
+        }));
       }
       return results;
-    }).call(this));
+    }).call(this)), React.createElement("ul", {
+      "className": "pagination"
+    }, React.createElement("li", {
+      "className": (this.state.index === 0 ? 'disabled' : 'waves-effect'),
+      "onClick": this.prev
+    }, React.createElement("a", {
+      "href": "#!"
+    }, React.createElement("i", {
+      "className": "mdi-navigation-chevron-left"
+    }))), (function() {
+      var j, ref, results;
+      results = [];
+      for (i = j = 1, ref = this.state.pages; 1 <= ref ? j <= ref : j >= ref; i = 1 <= ref ? ++j : --j) {
+        results.push(React.createElement("li", {
+          "className": (i - 1 === this.state.index ? 'active teal page' : 'waves-effect page'),
+          "onClick": this.move,
+          "data-page": i - 1
+        }, React.createElement("a", {
+          "href": "#!",
+          "data-page": i - 1
+        }, i)));
+      }
+      return results;
+    }).call(this), React.createElement("li", {
+      "className": (this.state.index === this.state.pages - 1 ? 'disabled' : 'waves-effect'),
+      "onClick": this.next
+    }, React.createElement("a", {
+      "href": "#!"
+    }, React.createElement("i", {
+      "className": "mdi-navigation-chevron-right"
+    })))), React.createElement("span", {
+      "className": "right"
+    }, this.state.data.length, " projects available"));
   }
 });
 
-},{"../modules/firebase":271,"./project":269,"jquery":2,"react":166}],271:[function(require,module,exports){
+},{"../modules/firebase":272,"./project.list.item":270,"jquery":2,"linq":9,"react":167}],272:[function(require,module,exports){
 (function() {
   var Net, firebase;
 
@@ -59905,7 +62852,7 @@ module.exports = Projects = React.createClass({
 
 }).call(this);
 
-},{"sublime-net":258}],272:[function(require,module,exports){
+},{"sublime-net":259}],273:[function(require,module,exports){
 (function() {
   (function(i, s, o, g, r, a, m) {
     i['GoogleAnalyticsObject'] = r;
