@@ -62673,7 +62673,9 @@ module.exports = BlogList = React.createClass({
         _this.setState({
           items: items
         });
-        return _this.getDOMNode().classList.remove('hide');
+        if (items.length > 0) {
+          return _this.getDOMNode().classList.remove('hide');
+        }
       };
     })(this));
   },

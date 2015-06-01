@@ -23,7 +23,8 @@ module.exports = BlogList = React.createClass
       items = items.sort (a, b) -> a.title > b.title
       
       @setState items: items
-      @getDOMNode().classList.remove 'hide'
+      if items.length > 0
+        @getDOMNode().classList.remove 'hide'
 
   componentWillMount: () ->
     @loadData()
