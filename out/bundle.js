@@ -62867,7 +62867,7 @@ module.exports = NavBar = React.createClass({
       "className": "nav-wrapper container"
     }, React.createElement("a", {
       "id": "logo-container",
-      "href": "#!",
+      "href": "/",
       "className": "brand-logo"
     }, this.props.title), React.createElement(LinkList, {
       "items": this.props.items,
