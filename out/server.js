@@ -48,6 +48,9 @@
     app.get('/', function(req, res) {
       return res.render('home');
     });
+    app.get('/blog', function(req, res) {
+      return res.render('blog');
+    });
     app.post('/mail', function(req, res) {
       mailer.send(process.env.WEBMASTER_EMAIL, req.body.email, "Message from " + req.body.first_name + " " + req.body.last_name, req.body.content);
       return res.status(200).end();

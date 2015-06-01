@@ -37,6 +37,9 @@ server.use (app) ->
   app.get '/', (req, res) ->
     res.render 'home'
 
+  app.get '/blog', (req, res) ->
+    res.render 'blog'
+
   app.post '/mail', (req, res) ->
     mailer.send(
       process.env.WEBMASTER_EMAIL

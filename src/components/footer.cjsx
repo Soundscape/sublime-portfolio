@@ -1,12 +1,6 @@
 LinkList = require './link.list'
 React = require 'react'
 
-items = [
-  { href: '#intro', text: 'About me' },
-  { href: '#projects', text: 'Projects' },
-  { href: '#contact', text: 'Contact' }
-]
-
 module.exports = Footer = React.createClass
   render: () ->
     <footer className={'page-footer ' + @props.className}>
@@ -14,7 +8,7 @@ module.exports = Footer = React.createClass
         <div className="row">
           <div className="col s12 m6 l6">
             <h5 className="white-text">Quick links</h5>
-            <LinkList items={items} anchorClassName="white-text" />
+            <LinkList items={@props.items} anchorClassName="white-text" />
 
             <iframe src="https://ghbtns.com/github-btn.html?user=soundscape&type=follow&size=large" frameBorder="0" scrolling="0" width="220px" height="30px">
             </iframe>

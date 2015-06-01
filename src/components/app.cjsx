@@ -5,11 +5,17 @@ ParallaxSection = require './parallax.section'
 ContactForm = require './contact.form'
 ProjectList = require './project.list'
 Footer = require './footer'
-Markdown = require './markdown' 
+
+items = [
+  { href: '#intro', text: 'About me' },
+  { href: '#projects', text: 'Projects' },
+  { href: '#contact', text: 'Contact' },
+  { href: 'blog', text: 'Blog' }
+]
 
 React.render(
   <div>
-    <NavBar className="blue-grey darken-3" title="portfolio" />
+    <NavBar className="blue-grey darken-3" title="portfolio" items={items} />
 
     <ParallaxSection id="first" src="assets/images/background22.jpg">
       <br />
@@ -61,7 +67,7 @@ React.render(
       </div>
     </Parallax>
 
-    <Footer className="blue-grey darken-2" />
+    <Footer className="blue-grey darken-2" items={items} />
   </div>,
   document.getElementById 'content'
 )

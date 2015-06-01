@@ -2,7 +2,11 @@ require './tracking'
 
 $ = require 'jquery'
 require 'materialize'
-require '../components/app'
+
+if location.pathname != '/blog'
+  require '../components/app'
+else
+  require '../components/blog'
 
 $ () ->
   $('.button-collapse').sideNav closeOnClick: true

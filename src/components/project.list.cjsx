@@ -54,9 +54,6 @@ module.exports = ProjectList = React.createClass
   next: () ->
     page = @state.index + 1
     @moveTo page
-      
-    $('.pagination li.page.active', @getDOMNode()).attr 'class', 'waves-effect page'
-    $('.pagination li.page[data-page=' + page + ']', @getDOMNode()).attr 'class', 'active teal page'
   
   componentWillMount: () ->
     @loadData()
