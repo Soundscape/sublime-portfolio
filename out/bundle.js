@@ -62560,8 +62560,6 @@ React = require('react');
 
 NavBar = require('./navbar');
 
-window.db = require('../modules/firebase');
-
 Footer = require('./footer');
 
 BlogList = require('./blog.list');
@@ -62618,7 +62616,7 @@ React.render(React.createElement("div", null, React.createElement(NavBar, {
   "items": items
 })), document.getElementById('content'));
 
-},{"../modules/firebase":274,"./blog.list":265,"./footer":267,"./navbar":269,"markdown":11,"react":167}],264:[function(require,module,exports){
+},{"./blog.list":265,"./footer":267,"./navbar":269,"markdown":11,"react":167}],264:[function(require,module,exports){
 var BlogListItem, React;
 
 React = require('react');

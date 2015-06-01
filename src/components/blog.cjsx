@@ -1,6 +1,5 @@
 React = require 'react'
 NavBar = require './navbar'
-window.db = require '../modules/firebase'
 Footer = require './footer'
 BlogList = require './blog.list'
 markdown = require('markdown').markdown
