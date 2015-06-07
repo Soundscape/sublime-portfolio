@@ -24,7 +24,7 @@ module.exports = ProjectList = React.createClass
           items.push item
 
       items = items.sort (a, b) -> a.title > b.title
-      pages = items.length / @state.size + (if items.length % @state.size == 0 then 0 else 1)
+      pages = Math.floor(items.length / @state.size) + (if 0 == items.length % @state.size then 0 else 1)
       current = Enumerable.from(items).skip(@state.index * @state.size).take(@state.size).toArray()
       @setState
         data: items
@@ -34,26 +34,26 @@ module.exports = ProjectList = React.createClass
       @getDOMNode().classList.remove 'hide'
 
   move: (e) ->
-    page = parseInt(e.target.getAttribute 'data-page')
-    @moveTo page
+    pageIndex = parseInt(e.target.getAttribute 'data-page')
+    @moveTo pageIndex
       
-  moveTo: (page) ->
-    page = if page < 0 then 0 else page
-    page = if page >= @state.pages then @state.pages - 1 else page
+  moveTo: (pageIndex) ->
+    pageIndex = if 0 > pageIndex then 0 else pageIndex
+    pageIndex = if @state.pages <= pageIndex then @state.pages - 1 else pageIndex
     @setState
-      index: page
-      items: Enumerable.from(@state.data).skip(page * @state.size).take(@state.size).toArray()
+      index: pageIndex
+      items: Enumerable.from(@state.data).skip(pageIndex * @state.size).take(@state.size).toArray()
       
     $('.pagination li.page.active', @getDOMNode()).attr 'class', 'waves-effect page'
-    $('.pagination li.page[data-page=' + page + ']', @getDOMNode()).attr 'class', 'active teal page'
+    $('.pagination li.page[data-page=' + pageIndex + ']', @getDOMNode()).attr 'class', 'active teal page'
       
   prev: () ->
-    page = @state.index - 1
-    @moveTo page
+    pageIndex = @state.index - 1
+    @moveTo pageIndex
       
   next: () ->
-    page = @state.index + 1
-    @moveTo page
+    pageIndex = @state.index + 1
+    @moveTo pageIndex
   
   componentWillMount: () ->
     @loadData()

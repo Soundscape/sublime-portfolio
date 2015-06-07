@@ -20,6 +20,7 @@
       css: './out/app.css',
       views: ['./src/*.jade', './src/**/*.jade'],
       temp: ['./out/components/', './out/modules'],
+      scripts: ['./out/*.js', './out/**/*.js'],
       fonts: {
         src: ['./bower_components/materialize/font/*.*', './bower_components/materialize/font/**/*.*'],
         out: './out/font/'
@@ -88,7 +89,7 @@
   });
 
   gulp.task('scripts', ['browserify'], function() {
-    return gulp.src(paths.out + 'bundle.js')
+    return gulp.src(paths.scripts)
       .pipe(plugins.uglify())
       .pipe(gulp.dest(paths.out))
       .on('error', plugins.util.log.bind(plugins.util, 'Uglify Error'));

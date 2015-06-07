@@ -9,8 +9,7 @@ Footer = require './footer'
 items = [
   { href: '#intro', text: 'About me' },
   { href: '#projects', text: 'Projects' },
-  { href: '#contact', text: 'Contact' },
-  { href: 'blog', text: 'Blog' }
+  { href: '#contact', text: 'Contact' }
 ]
 
 React.render(

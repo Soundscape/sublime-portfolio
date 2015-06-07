@@ -1,10 +1,1 @@
-(function() {
-  var Net, firebase;
-
-  Net = require('sublime-net');
-
-  firebase = new Net.Firebase('https://sublime-dev.firebaseio.com/');
-
-  module.exports = firebase;
-
-}).call(this);
+(function(){var e,i;e=require("sublime-net"),i=new e.Firebase("https://sublime-dev.firebaseio.com/"),module.exports=i}).call(this);

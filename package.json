@@ -1,6 +1,6 @@
 {
   "name": "sublime-portfolio",
-  "version": "0.0.669",
+  "version": "0.0.670",
   "description": "My portfolio web site",
   "main": "./out/server.js",
   "repository": {
