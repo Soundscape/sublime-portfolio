@@ -3,7 +3,7 @@ React = require 'react'
 db = require '../modules/firebase'
 Enumerable = require 'linq'
 BlogListItem = require './blog.list.item'
-
+window.db = db
 module.exports = BlogList = React.createClass
   getInitialState: () ->
     items: []

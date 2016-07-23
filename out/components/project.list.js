@@ -1,1 +1,128 @@
-var $,Enumerable,ProjectList,ProjectListItem,React,db;$=require("jquery"),React=require("react"),ProjectListItem=require("./project.list.item"),db=require("../modules/firebase"),Enumerable=require("linq"),module.exports=ProjectList=React.createClass({getInitialState:function(){return{data:[],items:[],size:this.props.size||5,index:0,pages:1}},loadData:function(){return db.query("project").on("value",function(e){return function(t){var a,i,s,r;return s=[],i=t.val(),Object.getOwnPropertyNames(i||{}).forEach(function(e){var t;return t=i[e],t._id=e,s.push(t)}),s=s.sort(function(e,t){return e.title>t.title}),r=Math.floor(s.length/e.state.size)+(0===s.length%e.state.size?0:1),a=Enumerable.from(s).skip(e.state.index*e.state.size).take(e.state.size).toArray(),e.setState({data:s,pages:r,items:a}),e.getDOMNode().classList.remove("hide")}}(this))},move:function(e){var t;return t=parseInt(e.target.getAttribute("data-page")),this.moveTo(t)},moveTo:function(e){return e=0>e?0:e,e=this.state.pages<=e?this.state.pages-1:e,this.setState({index:e,items:Enumerable.from(this.state.data).skip(e*this.state.size).take(this.state.size).toArray()}),$(".pagination li.page.active",this.getDOMNode()).attr("class","waves-effect page"),$(".pagination li.page[data-page="+e+"]",this.getDOMNode()).attr("class","active teal page")},prev:function(){var e;return e=this.state.index-1,this.moveTo(e)},next:function(){var e;return e=this.state.index+1,this.moveTo(e)},componentWillMount:function(){return this.loadData()},render:function(){var e;return React.createElement("div",{className:"project-list row hide"},React.createElement("ul",{className:"collection"},function(){var t,a,i,s;for(i=this.state.items,s=[],t=0,a=i.length;a>t;t++)e=i[t],s.push(React.createElement(ProjectListItem,{item:e}));return s}.call(this)),React.createElement("ul",{className:"pagination"},React.createElement("li",{className:0===this.state.index?"disabled":"waves-effect",onClick:this.prev},React.createElement("a",{href:"#!"},React.createElement("i",{className:"mdi-navigation-chevron-left"}))),function(){var t,a,i;for(i=[],e=t=1,a=this.state.pages;a>=1?a>=t:t>=a;e=a>=1?++t:--t)i.push(React.createElement("li",{className:e-1===this.state.index?"active teal page":"waves-effect page",onClick:this.move,"data-page":e-1},React.createElement("a",{href:"#!","data-page":e-1},e)));return i}.call(this),React.createElement("li",{className:this.state.index===this.state.pages-1?"disabled":"waves-effect",onClick:this.next},React.createElement("a",{href:"#!"},React.createElement("i",{className:"mdi-navigation-chevron-right"})))),React.createElement("span",{className:"right"},this.state.data.length," projects available"))}});
+var $, Enumerable, ProjectList, ProjectListItem, React, db;
+
+$ = require('jquery');
+
+React = require('react');
+
+ProjectListItem = require('./project.list.item');
+
+db = require('../modules/firebase');
+
+Enumerable = require('linq');
+
+module.exports = ProjectList = React.createClass({
+  getInitialState: function() {
+    return {
+      data: [],
+      items: [],
+      size: this.props.size || 5,
+      index: 0,
+      pages: 1
+    };
+  },
+  loadData: function() {
+    return db.query('project').on('value', (function(_this) {
+      return function(s) {
+        var current, data, items, pages;
+        items = [];
+        data = s.val();
+        Object.getOwnPropertyNames(data || {}).forEach(function(key) {
+          var item;
+          item = data[key];
+          item._id = key;
+          return items.push(item);
+        });
+        items = items.sort(function(a, b) {
+          return a.title > b.title;
+        });
+        pages = Math.floor(items.length / _this.state.size) + (0 === items.length % _this.state.size ? 0 : 1);
+        current = Enumerable.from(items).skip(_this.state.index * _this.state.size).take(_this.state.size).toArray();
+        _this.setState({
+          data: items,
+          pages: pages,
+          items: current
+        });
+        return _this.getDOMNode().classList.remove('hide');
+      };
+    })(this));
+  },
+  move: function(e) {
+    var pageIndex;
+    pageIndex = parseInt(e.target.getAttribute('data-page'));
+    return this.moveTo(pageIndex);
+  },
+  moveTo: function(pageIndex) {
+    pageIndex = 0 > pageIndex ? 0 : pageIndex;
+    pageIndex = this.state.pages <= pageIndex ? this.state.pages - 1 : pageIndex;
+    this.setState({
+      index: pageIndex,
+      items: Enumerable.from(this.state.data).skip(pageIndex * this.state.size).take(this.state.size).toArray()
+    });
+    $('.pagination li.page.active', this.getDOMNode()).attr('class', 'waves-effect page');
+    return $('.pagination li.page[data-page=' + pageIndex + ']', this.getDOMNode()).attr('class', 'active teal page');
+  },
+  prev: function() {
+    var pageIndex;
+    pageIndex = this.state.index - 1;
+    return this.moveTo(pageIndex);
+  },
+  next: function() {
+    var pageIndex;
+    pageIndex = this.state.index + 1;
+    return this.moveTo(pageIndex);
+  },
+  componentWillMount: function() {
+    return this.loadData();
+  },
+  render: function() {
+    var i;
+    return React.createElement("div", {
+      "className": "project-list row hide"
+    }, React.createElement("ul", {
+      "className": "collection"
+    }, (function() {
+      var j, len, ref, results;
+      ref = this.state.items;
+      results = [];
+      for (j = 0, len = ref.length; j < len; j++) {
+        i = ref[j];
+        results.push(React.createElement(ProjectListItem, {
+          "item": i
+        }));
+      }
+      return results;
+    }).call(this)), React.createElement("ul", {
+      "className": "pagination"
+    }, React.createElement("li", {
+      "className": (this.state.index === 0 ? 'disabled' : 'waves-effect'),
+      "onClick": this.prev
+    }, React.createElement("a", {
+      "href": "#!"
+    }, React.createElement("i", {
+      "className": "mdi-navigation-chevron-left"
+    }))), (function() {
+      var j, ref, results;
+      results = [];
+      for (i = j = 1, ref = this.state.pages; 1 <= ref ? j <= ref : j >= ref; i = 1 <= ref ? ++j : --j) {
+        results.push(React.createElement("li", {
+          "className": (i - 1 === this.state.index ? 'active teal page' : 'waves-effect page'),
+          "onClick": this.move,
+          "data-page": i - 1
+        }, React.createElement("a", {
+          "href": "#!",
+          "data-page": i - 1
+        }, i)));
+      }
+      return results;
+    }).call(this), React.createElement("li", {
+      "className": (this.state.index === this.state.pages - 1 ? 'disabled' : 'waves-effect'),
+      "onClick": this.next
+    }, React.createElement("a", {
+      "href": "#!"
+    }, React.createElement("i", {
+      "className": "mdi-navigation-chevron-right"
+    })))), React.createElement("span", {
+      "className": "right"
+    }, this.state.data.length, " projects available"));
+  }
+});

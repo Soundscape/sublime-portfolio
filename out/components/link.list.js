@@ -1,1 +1,24 @@
-var $,LinkList,React;$=require("jquery"),React=require("react"),module.exports=LinkList=React.createClass({render:function(){var e;return e=this.props.items.map(function(e){return function(t){return React.createElement("li",{className:e.props.itemClassName},React.createElement("a",{href:t.href,className:e.props.anchorClassName},t.text))}}(this)),React.createElement("ul",{className:this.props.className},e)}});
+var $, LinkList, React;
+
+$ = require('jquery');
+
+React = require('react');
+
+module.exports = LinkList = React.createClass({
+  render: function() {
+    var items;
+    items = this.props.items.map((function(_this) {
+      return function(item) {
+        return React.createElement("li", {
+          "className": _this.props.itemClassName
+        }, React.createElement("a", {
+          "href": item.href,
+          "className": _this.props.anchorClassName
+        }, item.text));
+      };
+    })(this));
+    return React.createElement("ul", {
+      "className": this.props.className
+    }, items);
+  }
+});

@@ -16,11 +16,11 @@ module.exports = Footer = React.createClass
           <div className="col s12 m6 l6 white-text">
             <h5 className="white-text">Contact info</h5>
             <h6 className="mdi-action-home">Address</h6>
-            <p>Nr. 13, 323 York Avenue, Johannesburg, SA</p>
+            <p>106 Bassett Road, Auckland, NZ</p>
             <h6 className="mdi-hardware-phone-android">Phone Number</h6>
-            <p>+27 78 246 9605</p>
+            <p>+64 22 368 5125</p>
             <h6 className="mdi-action-open-in-browser">Website</h6>
-            <p>sublime-dev.firebaseapp.com</p>
+            <p>sublime-portfolio.herokuapp.com/</p>
           </div>
         </div>
       </div>
