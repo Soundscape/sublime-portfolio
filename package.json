@@ -7,6 +7,9 @@
     "type": "git",
     "url": "https://github.com/Soundscape/sample-project.git"
   },
+  "engines": {
+    "node": "6.11.1"
+  }
   "author": "Soundscape",
   "license": "MIT",
   "bugs": {
